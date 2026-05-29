@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+aiofiles>=24.1.0
+Pillow>=10.4.0
+numpy>=1.26.0
+imageio>=2.36.0
+imageio-ffmpeg>=0.5.1
+opencv-python-headless>=4.10.0
+plyfile>=1.1.0
+scipy>=1.14.0
+trimesh>=4.5.0
