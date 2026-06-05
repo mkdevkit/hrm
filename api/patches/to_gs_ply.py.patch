@@ -1,0 +1,69 @@
+--- a/scripts/inference/to_gs_ply.py
++++ b/scripts/inference/to_gs_ply.py
+@@ -177,6 +177,38 @@ def default_export_output_path(args: argparse.Namespace) -> str:
+     )
+ 
+ 
++def normalize_ref_imgs(
++    imgs: list[np.ndarray],
++    *,
++    tgt_max_size: int = 840,
++) -> list[np.ndarray]:
++    """Pad/resize multi-view refs to a common size (Gradio ``PadRatioWithScale``, val=True)."""
++    from core.datasets.data_utils import SrcImagePipeline
++
++    rgb_float: list[np.ndarray] = []
++    for img in imgs:
++        arr = np.asarray(img)
++        if arr.ndim == 2:
++            arr = np.stack([arr, arr, arr], axis=-1)
++        elif arr.shape[-1] >= 4:
++            arr = arr[..., :3]
++        if arr.dtype == np.uint8 or float(arr.max()) > 1.0:
++            arr = arr.astype(np.float32) / 255.0
++        else:
++            arr = arr.astype(np.float32)
++        rgb_float.append(arr)
++
++    pipeline = SrcImagePipeline(
++        dict(
++            name="PadRatioWithScale",
++            target_ratio=5 / 3,
++            tgt_max_size_list=[tgt_max_size],
++            val=True,
++        )
++    )
++    normalized = pipeline(rgb_float)
++    return [(x * 255.0).clip(0, 255).astype(np.uint8) for x in normalized]
++
++
+ def prior_model_check(save_dir: str = "./pretrained_models") -> None:
+     """Same behavior as ``app.prior_model_check`` without importing Gradio (``app.py``)."""
+     human_model_path = os.path.join(save_dir, "human_model_files")
+@@ -688,8 +720,6 @@ def setup_loaders_and_inputs(args: argparse.Namespace):
+     _require_gs_output_model(args.model_name)
+     from core.utils.app_utils import obtain_ref_imgs
+ 
+-    from engine.pose_estimation.pose_estimator import PoseEstimator
+-
+     device = args.device
+     dtype = torch.float32
+ 
+@@ -715,6 +745,8 @@ def setup_loaders_and_inputs(args: argparse.Namespace):
+ 
+     pose_estimator = None
+     if cfg.get("use_smplx_shape_estimator", True):
++        from engine.pose_estimation.pose_estimator import PoseEstimator
++
+         pose_estimator = PoseEstimator("./pretrained_models/human_model_files/", device="cpu")
+         pose_estimator.device = device
+ 
+@@ -731,6 +763,8 @@ def setup_loaders_and_inputs(args: argparse.Namespace):
+     working_dir.name = os.path.abspath(work_dir_path)
+ 
+     imgs = obtain_ref_imgs(image_for_prepare, ref_view=args.ref_view)
++    max_image_size = int(getattr(args, "max_image_size", 840) or 840)
++    imgs = normalize_ref_imgs(imgs, tgt_max_size=max_image_size)
+     sample_imgs = np.concatenate(imgs, axis=1)
+     save_sample_imgs = os.path.join(working_dir.name, "raw.png")
+     with Image.fromarray(sample_imgs) as img:

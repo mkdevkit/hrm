@@ -29,6 +29,10 @@ def _prior_model_check(save_dir: Path) -> None:
     print("Prior models ready.")
 
 
+def _cap_ref_view(ref_view: int) -> int:
+    return max(1, min(ref_view, settings.effective_infer_ref_view_max))
+
+
 class LHMPPService:
     """封装 LHM++ 推理：多图重建 3D Gaussian + 动作驱动渲染。"""
 
@@ -114,9 +118,19 @@ class LHMPPService:
             auto_query = AutoModelQuery(save_dir=str(root / "pretrained_models"))
             model_path = auto_query.query(settings.model_name)
 
+        load_path = model_path
+        target_dense = settings.effective_infer_dense_sample_pts
+        if target_dense > 0:
+            from services.lhm_infer_utils import prepare_patched_model_path
+
+            infer_work = root / "infer_work"
+            load_path, _ = prepare_patched_model_path(
+                model_path, root, infer_work, target_dense
+            )
+
         model_cards = {
             settings.model_name: {
-                "model_path": model_path,
+                "model_path": load_path,
                 "model_config": model_config,
             }
         }
@@ -125,7 +139,7 @@ class LHMPPService:
             dict(
                 name="PadRatioWithScale",
                 target_ratio=5 / 3,
-                tgt_max_size_list=[840],
+                tgt_max_size_list=[settings.effective_infer_max_image_size],
                 val=True,
             ),
         ]
@@ -135,6 +149,10 @@ class LHMPPService:
 
         self._lhmpp = build_app_model(self._cfg)
         self._lhmpp.to("cuda")
+
+        from services.lhm_infer_utils import apply_infer_memory_overrides
+
+        apply_infer_memory_overrides(self._lhmpp, root)
 
         if self._cfg.get("use_smplx_shape_estimator", True):
             from engine.pose_estimation.pose_estimator import PoseEstimator
@@ -155,6 +173,7 @@ class LHMPPService:
         export_skinned_mesh: bool = False,
     ) -> dict[str, Any]:
         output_dir.mkdir(parents=True, exist_ok=True)
+        ref_view = _cap_ref_view(ref_view)
 
         if settings.mock_mode:
             ply_path = output_dir / "avatar.ply"
@@ -203,6 +222,8 @@ class LHMPPService:
         from shutil import copy2
         from types import SimpleNamespace
 
+        ref_view = _cap_ref_view(ref_view)
+
         os.environ.update(
             {
                 "APP_ENABLED": "1",
@@ -227,7 +248,8 @@ class LHMPPService:
             auto_query = AutoModelQuery(save_dir=str(root / "pretrained_models"))
             model_path = auto_query.query(settings.model_name)
 
-        from scripts.inference.to_gs_ply import run_tpose_export, setup_loaders_and_inputs
+        from scripts.inference.to_gs_ply import run_tpose_export
+        from services.lhm_infer_utils import setup_loaders_for_hrm
 
         args = SimpleNamespace(
             model_name=settings.model_name,
@@ -239,11 +261,15 @@ class LHMPPService:
             output=str(ply_out),
             work_dir=str(output_dir / "tpose_gs_work"),
             device="cuda",
+            max_image_size=settings.effective_infer_max_image_size,
+            lhm_root=str(root),
         )
 
         betas_list: list[float] | None = None
         model = None
         ref_count = len(image_paths)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         try:
             (
                 model,
@@ -253,8 +279,13 @@ class LHMPPService:
                 motion_seqs,
                 _pose_estimator,
                 device,
-            ) = setup_loaders_and_inputs(args)
+            ) = setup_loaders_for_hrm(args)
             ref_count = int(ref_imgs_tensor.shape[0])
+            import gc
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             run_tpose_export(
                 model,
                 ref_imgs_tensor,
@@ -287,6 +318,10 @@ class LHMPPService:
             "ref_count": ref_count,
             "export_skinned_mesh": export_skinned_mesh,
             "mock": False,
+            "infer_low_memory": settings.infer_low_memory,
+            "infer_max_image_size": settings.effective_infer_max_image_size,
+            "infer_dense_sample_pts": settings.effective_infer_dense_sample_pts,
+            "ref_view_used": ref_view,
         }
 
         if export_skinned_mesh:
@@ -313,6 +348,7 @@ class LHMPPService:
         render_backend: str = "neural",
     ) -> dict[str, Any]:
         output_dir.mkdir(parents=True, exist_ok=True)
+        ref_view = _cap_ref_view(ref_view)
         video_path = output_dir / "animation.mp4"
 
         if settings.mock_mode:
@@ -351,12 +387,12 @@ class LHMPPService:
         from core.utils.app_utils import get_motion_information, obtain_ref_imgs
         from PIL import Image
         from scripts.inference.app_inference import inference_results
-        from scripts.inference.to_gs_ply import normalize_ref_imgs
+        from services.lhm_infer_utils import normalize_ref_imgs
         from scripts.inference.utils import easy_memory_manager
 
         imgs_pil = [Image.open(p).convert("RGBA") for p in image_paths]
         imgs_arr = normalize_ref_imgs(
-            obtain_ref_imgs([(np.array(img),) for img in imgs_pil], ref_view)
+            obtain_ref_imgs([(np.array(img),) for img in imgs_pil], ref_view),
         )
 
         device = "cuda"
@@ -390,6 +426,7 @@ class LHMPPService:
             video_size=video_size,
             device=device,
             infer_output_renderer=render_backend,
+            batch_size=settings.effective_infer_anim_batch_size,
         )
 
         iio.imwrite(

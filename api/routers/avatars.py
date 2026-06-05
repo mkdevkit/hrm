@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 
 from config import settings
 from services.job_manager import JobManager, JobStatus
-from services.lhmpp_service import lhmpp_service
+from services.lhmpp_service import _cap_ref_view, lhmpp_service
 from services.motion_service import motion_service
 
 router = APIRouter(prefix="/api/v1", tags=["avatars"])
@@ -54,6 +54,11 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "lhmpp_available": lhmpp_service.available,
         "mock_mode": settings.mock_mode,
+        "infer_low_memory": settings.infer_low_memory,
+        "infer_max_image_size": settings.effective_infer_max_image_size,
+        "infer_ref_view_max": settings.effective_infer_ref_view_max,
+        "infer_anim_batch_size": settings.effective_infer_anim_batch_size,
+        "infer_dense_sample_pts": settings.effective_infer_dense_sample_pts,
     }
 
 
@@ -67,6 +72,8 @@ async def create_avatar(
         raise HTTPException(400, "请至少上传一张人物图片")
     if len(images) > settings.max_ref_images:
         raise HTTPException(400, f"最多上传 {settings.max_ref_images} 张图片")
+
+    ref_view = _cap_ref_view(ref_view)
 
     avatar_id = str(uuid.uuid4())
     avatar_path = _avatar_dir(avatar_id)

@@ -28,6 +28,7 @@
 - [蒙皮网格导出说明](#蒙皮网格导出说明)
 - [Mock 模式（无 GPU 联调）](#mock-模式无-gpu-联调)
 - [配置项参考](#配置项参考)
+- [不修改 LHM-plusplus 仓库](#不修改-lhm-plusplus-仓库)
 - [项目结构](#项目结构)
 - [常见问题](#常见问题)
 - [参考链接](#参考链接)
@@ -616,6 +617,11 @@ MOCK_MODE=true
 | `MODEL_NAME`   | `LHMPP-700M-PixelShuffle` | 模型名                 |
 | `MODEL_PATH`   | 空                         | 本地权重路径（可选）          |
 | `MOCK_MODE`    | `false`                   | 是否 Mock 模式          |
+| `INFER_LOW_MEMORY` | `false`               | 低显存测试模式（见下表）      |
+| `INFER_MAX_IMAGE_SIZE` | `0`（自动）       | 参考图最大高度（px），如 `672` |
+| `INFER_REF_VIEW_MAX` | `0`（自动）         | 参考视角上限，如 `2`        |
+| `INFER_ANIM_BATCH_SIZE` | `0`（自动）      | 动作驱动每批帧数，如 `4`      |
+| `INFER_DENSE_SAMPLE_PTS` | `0`（自动）     | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时） |
 | `CORS_ORIGINS` | `http://localhost:3000`   | 允许的前端源，逗号分隔         |
 | `API_PORT`     | `8000`                    | 监听端口                |
 
@@ -631,6 +637,17 @@ MOCK_MODE=true
 | `render_fps`            | 30   | 输出视频帧率  |
 
 
+**低显存 / 测试推理**（`INFER_LOW_MEMORY=true` 时自动生效，也可单独覆盖）：
+
+| 参数 | 正常 | `INFER_LOW_MEMORY=true` |
+| --- | --- | --- |
+| 参考视角上限 | 8 | 4 |
+| 输入图最大高度 | 840 px | 560 px |
+| 动画 batch | 40 帧/批 | 8 帧/批 |
+| 体素采样点 | 160000（checkpoint） | 40000 |
+
+显存仍不足时可设 `INFER_REF_VIEW_MAX=1`、`INFER_MAX_IMAGE_SIZE=392`、`INFER_DENSE_SAMPLE_PTS=40000`。报错含 `cumm` / `spconv` / `TensorStorage` 时优先降 **体素采样点**；需 `LHM_ROOT/pretrained_models/dense_sample_points/1_40000.ply` 等 prior 缓存存在（随 prior 模型一并下载）。
+
 ### Web（`web/.env.local`）
 
 
@@ -639,6 +656,37 @@ MOCK_MODE=true
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 后端 HTTP 地址      |
 | `NEXT_PUBLIC_WS_URL`  | `ws://localhost:8000`   | 后端 WebSocket 地址 |
 
+
+---
+
+## 不修改 LHM-plusplus 仓库
+
+HRM **不应对 LHM-plusplus 源码做本地改动**。与官方仓库差异较大的逻辑（多视角图像归一化、PixelShuffle 下 lazy 加载 `PoseEstimator`、低显存分辨率等）已全部放在 `api/` 侧，便于随时 `git pull` 升级 LHM++。
+
+| 若曾在 LHM++ 侧改动的内容 | HRM 替代实现 |
+| --- | --- |
+| `normalize_ref_imgs` | `api/services/lhm_infer_utils.py` |
+| lazy import + 归一化 + 低显存分辨率 | `setup_loaders_for_hrm()`（同上） |
+| 重建 / 动作驱动入口 | `api/services/lhmpp_service.py` 调用上述模块 |
+
+HRM API **仅 import** 上游未改动的函数（如 `run_tpose_export`），**不依赖**对 LHM++ 的任何 patch。
+
+### 补丁记录（可选）
+
+历史上若需直接改 `scripts/inference/to_gs_ply.py`，diff 已归档于：
+
+| 文件 | 说明 |
+| --- | --- |
+| [`api/patches/to_gs_ply.py.patch`](api/patches/to_gs_ply.py.patch) | 完整 unified diff（供参考或 CLI 使用） |
+| [`api/patches/README.md`](api/patches/README.md) | 补丁说明与对照表 |
+
+若希望 **LHM++ CLI**（`python scripts/inference/to_gs_ply.py`）也具备相同行为，可在 LHM++ 根目录手动打补丁：
+
+```bash
+patch -p1 < /path/to/hrm/api/patches/to_gs_ply.py.patch
+```
+
+**跑 HRM API 不需要打该补丁**；配置好 `LHM_ROOT` 并重启 API 即可。
 
 ---
 
@@ -653,11 +701,15 @@ hrm/
 │   ├── config.py                 # 配置
 │   ├── requirements.txt
 │   ├── .env.example
+│   ├── patches/                  # LHM++ 可选补丁归档（HRM API 不依赖）
+│   │   ├── README.md
+│   │   └── to_gs_ply.py.patch
 │   ├── routers/
 │   │   ├── avatars.py            # REST：重建、下载、动画
 │   │   └── stream.py             # WebSocket：摄像头流
 │   └── services/
 │       ├── lhmpp_service.py      # LHM++ 推理封装
+│       ├── lhm_infer_utils.py    # 推理辅助（归一化、setup_loaders，不修改 LHM++）
 │       ├── motion_service.py     # 动作视频 → SMPL-X 提取
 │       ├── mesh_export_service.py # 高斯 PLY → SMPL-X 蒙皮网格（自研后处理）
 │       └── job_manager.py        # 异步任务管理

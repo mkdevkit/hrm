@@ -5,7 +5,10 @@ _API_ROOT = Path(__file__).resolve().parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(_API_ROOT / ".env"),
+        extra="ignore",
+    )
 
     # LHM-plusplus 仓库根目录（需已安装依赖并下载模型）
     lhm_root: str = ""
@@ -21,6 +24,14 @@ class Settings(BaseSettings):
 
     # 无 GPU 时启用 mock 模式（仅用于前端联调）
     mock_mode: bool = False
+
+    # 推理显存控制（测试 / 低显存 GPU）
+    # INFER_LOW_MEMORY=true 时默认：ref_view≤4、输入高 560px、动画 batch=8
+    infer_low_memory: bool = False
+    infer_max_image_size: int = 0  # 0=自动（低显存 560，正常 840）
+    infer_ref_view_max: int = 0  # 0=自动（低显存 4，正常 max_ref_images）
+    infer_anim_batch_size: int = 0  # 0=自动（低显存 8，正常 40）
+    infer_dense_sample_pts: int = 0  # 0=自动（低显存 40000，正常用 checkpoint 160000）
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -41,6 +52,31 @@ class Settings(BaseSettings):
     @property
     def motion_cache_dir(self) -> Path:
         return self.data_dir / "motion_cache"
+
+    @property
+    def effective_infer_max_image_size(self) -> int:
+        if self.infer_max_image_size > 0:
+            return self.infer_max_image_size
+        return 560 if self.infer_low_memory else 840
+
+    @property
+    def effective_infer_ref_view_max(self) -> int:
+        if self.infer_ref_view_max > 0:
+            return self.infer_ref_view_max
+        return 4 if self.infer_low_memory else self.max_ref_images
+
+    @property
+    def effective_infer_anim_batch_size(self) -> int:
+        if self.infer_anim_batch_size > 0:
+            return self.infer_anim_batch_size
+        return 8 if self.infer_low_memory else 40
+
+    @property
+    def effective_infer_dense_sample_pts(self) -> int:
+        """体素/query 采样点数上限；0 表示不覆盖 checkpoint 默认值。"""
+        if self.infer_dense_sample_pts > 0:
+            return self.infer_dense_sample_pts
+        return 40000 if self.infer_low_memory else 0
 
 
 settings = Settings()
