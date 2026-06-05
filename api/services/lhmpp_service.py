@@ -1,13 +1,32 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from config import settings
+from services.platform_compat import apply_lhm_import_compat
+
+
+def _prior_model_check(save_dir: Path) -> None:
+    """检查/下载 LHM++ 先验模型（与 app.prior_model_check 相同，避免 import Gradio app.py）。"""
+    human_model_path = save_dir / "human_model_files"
+    if human_model_path.exists():
+        return
+    if human_model_path.is_symlink():
+        try:
+            human_model_path.unlink()
+            print("Removed broken symlink: human_model_files")
+        except OSError as exc:
+            print(f"Failed to remove broken symlink: {exc}")
+    print("Prior models not found or invalid. Downloading...")
+    from core.utils.model_download_utils import AutoModelQuery
+
+    AutoModelQuery(save_dir=str(save_dir)).download_all_prior_models()
+    print("Prior models ready.")
 
 
 class LHMPPService:
@@ -32,10 +51,23 @@ class LHMPPService:
             raise RuntimeError(
                 f"LHM_ROOT 不存在: {root}。请克隆 https://github.com/aigc3d/LHM-plusplus 并设置环境变量。"
             )
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        os.chdir(root)
+        apply_lhm_import_compat()
+        # LHM++ 内部大量使用相对导入（如 engine/pose_estimation/model.py 的 `from blocks import ...`）
+        for rel in ("", "engine", "engine/pose_estimation"):
+            entry = str(root / rel) if rel else str(root)
+            if entry not in sys.path:
+                sys.path.insert(0, entry)
         return root
+
+    @contextmanager
+    def _lhm_runtime(self, root: Path) -> Iterator[Path]:
+        """临时切换到 LHM++ 根目录，避免其相对路径/相对 import 失败；结束后恢复 cwd。"""
+        prev_cwd = os.getcwd()
+        os.chdir(root)
+        try:
+            yield root
+        finally:
+            os.chdir(prev_cwd)
 
     def initialize(self) -> None:
         if self._initialized or settings.mock_mode:
@@ -43,6 +75,12 @@ class LHMPPService:
             return
 
         root = self._ensure_lhm_path()
+        with self._lhm_runtime(root):
+            self._initialize_models(root)
+
+        self._initialized = True
+
+    def _initialize_models(self, root: Path) -> None:
         os.environ.update(
             {
                 "APP_ENABLED": "1",
@@ -57,18 +95,16 @@ class LHMPPService:
         torch._dynamo.config.disable = True
 
         from accelerate import Accelerator
-        from app import prior_model_check
         from core.datasets.data_utils import SrcImagePipeline
         from core.utils.model_card import MODEL_CONFIG
         from core.utils.model_download_utils import AutoModelQuery
-        from engine.pose_estimation.pose_estimator import PoseEstimator
         from scripts.download_motion_video import motion_video_check
         from scripts.inference.app_inference import (
             build_app_model,
             parse_app_configs,
         )
 
-        prior_model_check(save_dir=str(root / "pretrained_models"))
+        _prior_model_check(root / "pretrained_models")
         motion_video_check(save_dir=str(root))
 
         model_config = MODEL_CONFIG[settings.model_name]
@@ -101,6 +137,8 @@ class LHMPPService:
         self._lhmpp.to("cuda")
 
         if self._cfg.get("use_smplx_shape_estimator", True):
+            from engine.pose_estimation.pose_estimator import PoseEstimator
+
             self._pose_estimator = PoseEstimator(
                 str(root / "pretrained_models" / "human_model_files"),
                 device="cpu",
@@ -108,8 +146,6 @@ class LHMPPService:
             self._pose_estimator.device = "cuda"
         else:
             self._pose_estimator = None
-
-        self._initialized = True
 
     def reconstruct_avatar(
         self,
@@ -142,36 +178,46 @@ class LHMPPService:
                 result.update(mesh_result)
             return result
 
-        self.initialize()
+        # 重建走 to_gs_ply 单进程加载；勿先 initialize()，否则与子进程/二次加载争用显存导致 OOM。
         root = self._ensure_lhm_path()
 
-        import numpy as np
-        import torch
-        from PIL import Image
-
-        from core.utils.app_utils import obtain_ref_imgs
-
-        imgs_pil = [Image.open(p).convert("RGBA") for p in image_paths]
-        imgs_arr = obtain_ref_imgs([(np.array(img),) for img in imgs_pil], ref_view)
-
-        betas_list: list[float] | None = None
-        if self._pose_estimator is not None:
-            from scripts.inference.utils import easy_memory_manager
-
-            with torch.no_grad():
-                with easy_memory_manager(self._pose_estimator, device="cuda"):
-                    shape_pose = self._pose_estimator(imgs_arr[0])
-            if not shape_pose.is_full_body:
-                raise ValueError(f"输入图片不符合要求: {shape_pose.msg}")
-            betas_list = shape_pose.beta.tolist() if hasattr(shape_pose.beta, "tolist") else list(shape_pose.beta)
-            (output_dir / "betas.json").write_text(
-                json.dumps(betas_list), encoding="utf-8"
+        with self._lhm_runtime(root):
+            return self._reconstruct_avatar_real(
+                image_paths,
+                output_dir,
+                root,
+                ref_view=ref_view,
+                export_skinned_mesh=export_skinned_mesh,
             )
+
+    def _reconstruct_avatar_real(
+        self,
+        image_paths: list[Path],
+        output_dir: Path,
+        root: Path,
+        *,
+        ref_view: int,
+        export_skinned_mesh: bool,
+    ) -> dict[str, Any]:
+        import torch
+        from shutil import copy2
+        from types import SimpleNamespace
+
+        os.environ.update(
+            {
+                "APP_ENABLED": "1",
+                "APP_MODEL_NAME": settings.model_name,
+                "APP_TYPE": "infer.human_lrm_a4o",
+                "NUMBA_THREADING_LAYER": "omp",
+            }
+        )
+        torch._dynamo.config.disable = True
 
         image_glob_dir = output_dir / "ref_images"
         image_glob_dir.mkdir(parents=True, exist_ok=True)
-        for i, img in enumerate(imgs_arr):
-            Image.fromarray(img.astype(np.uint8)).save(image_glob_dir / f"ref_{i:03d}.png")
+        for i, src in enumerate(image_paths):
+            ext = src.suffix or ".png"
+            copy2(src, image_glob_dir / f"ref_{i:03d}{ext}")
 
         ply_out = output_dir / "avatar.ply"
         model_path = settings.model_path
@@ -181,27 +227,64 @@ class LHMPPService:
             auto_query = AutoModelQuery(save_dir=str(root / "pretrained_models"))
             model_path = auto_query.query(settings.model_name)
 
-        import subprocess
+        from scripts.inference.to_gs_ply import run_tpose_export, setup_loaders_and_inputs
 
-        cmd = [
-            sys.executable,
-            str(root / "scripts" / "inference" / "to_gs_ply.py"),
-            "--model_path",
-            model_path,
-            "--image_glob",
-            str(image_glob_dir / "ref_*.png"),
-            "--output",
-            str(ply_out),
-        ]
-        proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
-        if proc.returncode != 0:
-            raise RuntimeError(f"3D 重建失败: {proc.stderr or proc.stdout}")
+        args = SimpleNamespace(
+            model_name=settings.model_name,
+            model_path=model_path,
+            image_glob=str(image_glob_dir / "ref_*.png"),
+            images_dir=None,
+            pose_dir="",
+            ref_view=ref_view,
+            output=str(ply_out),
+            work_dir=str(output_dir / "tpose_gs_work"),
+            device="cuda",
+        )
+
+        betas_list: list[float] | None = None
+        model = None
+        ref_count = len(image_paths)
+        try:
+            (
+                model,
+                _cfg,
+                ref_imgs_tensor,
+                smplx_params,
+                motion_seqs,
+                _pose_estimator,
+                device,
+            ) = setup_loaders_and_inputs(args)
+            ref_count = int(ref_imgs_tensor.shape[0])
+            run_tpose_export(
+                model,
+                ref_imgs_tensor,
+                motion_seqs,
+                device=device,
+                output_ply=str(ply_out),
+                export_animation_pose=False,
+            )
+            betas = smplx_params.get("betas")
+            if betas is not None:
+                betas_list = betas.detach().cpu().reshape(-1).tolist()
+                (output_dir / "betas.json").write_text(
+                    json.dumps(betas_list), encoding="utf-8"
+                )
+        except Exception as exc:
+            raise RuntimeError(f"3D 重建失败: {exc}") from exc
+        finally:
+            if model is not None:
+                del model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         preview_path = image_glob_dir / "ref_000.png"
+        if not preview_path.exists() and image_paths:
+            preview_path = image_paths[0]
+
         result = {
             "ply_path": str(ply_out),
             "preview_path": str(preview_path),
-            "ref_count": len(imgs_arr),
+            "ref_count": ref_count,
             "export_skinned_mesh": export_skinned_mesh,
             "mock": False,
         }
@@ -237,7 +320,30 @@ class LHMPPService:
             return {"video_path": str(video_path), "frame_count": motion_frames, "mock": True}
 
         self.initialize()
+        root = self._ensure_lhm_path()
 
+        with self._lhm_runtime(root):
+            return self._animate_avatar_real(
+                image_paths,
+                motion_smplx_dir,
+                output_dir,
+                video_path=video_path,
+                ref_view=ref_view,
+                motion_frames=motion_frames,
+                render_backend=render_backend,
+            )
+
+    def _animate_avatar_real(
+        self,
+        image_paths: list[Path],
+        motion_smplx_dir: Path,
+        output_dir: Path,
+        *,
+        video_path: Path,
+        ref_view: int,
+        motion_frames: int,
+        render_backend: str,
+    ) -> dict[str, Any]:
         import imageio.v3 as iio
         import numpy as np
         import torch
@@ -245,10 +351,13 @@ class LHMPPService:
         from core.utils.app_utils import get_motion_information, obtain_ref_imgs
         from PIL import Image
         from scripts.inference.app_inference import inference_results
+        from scripts.inference.to_gs_ply import normalize_ref_imgs
         from scripts.inference.utils import easy_memory_manager
 
         imgs_pil = [Image.open(p).convert("RGBA") for p in image_paths]
-        imgs_arr = obtain_ref_imgs([(np.array(img),) for img in imgs_pil], ref_view)
+        imgs_arr = normalize_ref_imgs(
+            obtain_ref_imgs([(np.array(img),) for img in imgs_pil], ref_view)
+        )
 
         device = "cuda"
         dtype = torch.float32

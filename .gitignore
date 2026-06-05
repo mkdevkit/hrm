@@ -4,3 +4,7 @@ node_modules
 .next
 out
 *.tsbuildinfo
+.env
+.env.local
+__pycache__
+api/data

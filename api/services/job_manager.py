@@ -59,6 +59,7 @@ class JobManager:
 
     def _persist(self, job: Job) -> None:
         job.updated_at = datetime.now(timezone.utc).isoformat()
+        self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self._job_path(job.id).write_text(
             json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",

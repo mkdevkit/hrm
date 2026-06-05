@@ -57,32 +57,36 @@ api/data/
 
 ## 功能一览
 
-| 功能 | API | 说明 |
-|------|-----|------|
-| 健康检查 | `GET /api/v1/health` | 服务状态、LHM++ 可用性、是否 Mock 模式 |
-| 多图 3D 重建 | `POST /api/v1/avatars` | 上传 1–8 张全身人物图，导出 Gaussian Splat `.ply` |
-| 蒙皮网格导出 | `POST /api/v1/avatars` + `export_skinned_mesh=true` | 同时导出 SMPL-X 蒙皮网格 OBJ/GLB + 骨骼 JSON |
-| 查询 Avatar | `GET /api/v1/avatars/{id}` | 获取元数据与生成结果路径 |
-| 下载高斯模型 | `GET /api/v1/avatars/{id}/model` | 下载 `.ply` |
-| 下载蒙皮网格 | `GET /api/v1/avatars/{id}/mesh?format=obj\|glb` | 下载 OBJ 或 GLB |
-| 下载骨骼 | `GET /api/v1/avatars/{id}/skeleton` | SMPL-X 55 关节 + LBS 权重 JSON |
-| 预览图 | `GET /api/v1/avatars/{id}/preview` | 参考图预览 |
-| 动作视频驱动 | `POST /api/v1/avatars/{id}/animate` | 上传动作视频，渲染动画 MP4 |
-| 摄像头流驱动 | `WS /api/v1/avatars/{id}/motion-stream` | 实时发送 JPEG 帧，批量推理动画 |
-| 任务查询 | `GET /api/v1/jobs/{id}` | 轮询重建/动画进度 |
-| 下载动画视频 | `GET /api/v1/jobs/{id}/video` | 下载渲染结果 MP4 |
+
+| 功能        | API                                                 | 说明                                     |
+| --------- | --------------------------------------------------- | -------------------------------------- |
+| 健康检查      | `GET /api/v1/health`                                | 服务状态、LHM++ 可用性、是否 Mock 模式              |
+| 多图 3D 重建  | `POST /api/v1/avatars`                              | 上传 1–8 张全身人物图，导出 Gaussian Splat `.ply` |
+| 蒙皮网格导出    | `POST /api/v1/avatars` + `export_skinned_mesh=true` | 同时导出 SMPL-X 蒙皮网格 OBJ/GLB + 骨骼 JSON     |
+| 查询 Avatar | `GET /api/v1/avatars/{id}`                          | 获取元数据与生成结果路径                           |
+| 下载高斯模型    | `GET /api/v1/avatars/{id}/model`                    | 下载 `.ply`                              |
+| 下载蒙皮网格    | `GET /api/v1/avatars/{id}/mesh?format=obj           | glb`                                   |
+| 下载骨骼      | `GET /api/v1/avatars/{id}/skeleton`                 | SMPL-X 55 关节 + LBS 权重 JSON             |
+| 预览图       | `GET /api/v1/avatars/{id}/preview`                  | 参考图预览                                  |
+| 动作视频驱动    | `POST /api/v1/avatars/{id}/animate`                 | 上传动作视频，渲染动画 MP4                        |
+| 摄像头流驱动    | `WS /api/v1/avatars/{id}/motion-stream`             | 实时发送 JPEG 帧，批量推理动画                     |
+| 任务查询      | `GET /api/v1/jobs/{id}`                             | 轮询重建/动画进度                              |
+| 下载动画视频    | `GET /api/v1/jobs/{id}/video`                       | 下载渲染结果 MP4                             |
+
 
 ---
 
 ## 环境要求
 
-| 组件 | 要求 |
-|------|------|
-| GPU | 推荐 NVIDIA ≥8GB 显存（LHMPP-700M-PixelShuffle） |
-| Python | 3.10+（与 LHM++ 官方一致） |
-| Node.js | 18+ |
-| LHM-plusplus | 需单独克隆安装，见下方 |
-| CUDA | 12.1（与 LHM++ 官方推荐一致） |
+
+| 组件           | 要求                                         |
+| ------------ | ------------------------------------------ |
+| GPU          | 推荐 NVIDIA ≥8GB 显存（LHMPP-700M-PixelShuffle） |
+| Python       | 3.10+（与 LHM++ 官方一致）                        |
+| Node.js      | 18+                                        |
+| LHM-plusplus | 需单独克隆安装，见下方                                |
+| CUDA         | 12.1（与 LHM++ 官方推荐一致）                       |
+
 
 ---
 
@@ -90,23 +94,90 @@ api/data/
 
 ### 1. 安装 LHM-plusplus
 
+## WSL (Ubuntu) 安装 CUDA12.1 Toolkit（官方源）
+
+### 1) 添加 WSL 专属 CUDA 源
+
+bash
+
+运行
+
+```
+# 固定源优先级
+wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
+sudo mv cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
+
+# 导入密钥+添加软件源
+wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update
+```
+
+### 2) 只安装 CUDA12.1 工具包（不带驱动）
+
+bash
+
+运行
+
+```
+sudo apt install -y cuda-toolkit-12-1
+```
+
+安装路径默认：`/usr/local/cuda-12.1`，自动软链接 `/usr/local/cuda`。
+
 在 GPU 服务器上克隆并安装 [LHM-plusplus](https://github.com/aigc3d/LHM-plusplus)：
 
 ```bash
 git clone https://github.com/aigc3d/LHM-plusplus
 cd LHM-plusplus
 
+# 需 Python 3.10（LHM++ 官方要求）；请用 python -m pip，避免 pip 指向其他 Python 版本
+python -m pip install --upgrade pip setuptools wheel
+
 # 安装 PyTorch 2.3 + CUDA 12.1（见官方 README）
-pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
-pip install -U xformers==0.0.26.post1 --index-url https://download.pytorch.org/whl/cu121
+python -m pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -U xformers==0.0.26.post1 --index-url https://download.pytorch.org/whl/cu121
 
-pip install -r requirements.txt
-pip install rembg[cpu]
+# chumpy 需先单独安装（直接 pip install -r requirements.txt 可能报 No module named 'pip'）
+python -m pip install --no-build-isolation chumpy
 
-# 安装 pointops、spconv、pytorch3d、gsplat 等（见官方 INSTALL.md）
+python -m pip install -r requirements.txt
+python -m pip install rembg[cpu]
 
-# 一键下载模型与动作数据
+# install pointops
+cd ./lib/pointops/ && python setup.py install && cd ../../
+
+pip install spconv-cu121
+# pip install torch_scatter, see [wheel](https://data.pyg.org/whl/) for your CUDA version
+# For example (PyTorch 2.3 + CUDA 12.1 + Python 3.10):
+pip install torch_scatter-2.1.2+pt23cu121-cp310-cp310-linux_x86_64.whl
+
+# 安装 pointops、spconv、gsplat 等（见官方 INSTALL.md / INSTALL_CN.md）
+# PyTorch3D（Linux 预编译 wheel；Windows 见下方说明）
+python -m pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt230/download.html
+#上面的如果报错，就执行下面两行
+#pip install git+https://ghproxy.net/https://github.com/facebookresearch/fvcore.git -i https://pypi.tuna.tsinghua.edu.cn/simple
+#pip install git+https://ghproxy.net/https://github.com/facebookresearch/iopath.git -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# install simple-knn
+pip install git+https://github.com/camenduru/simple-knn/
+
+# install gsplat
+# pip install gsplat from pre-compiled [wheel](https://docs.gsplat.studio/whl/gsplat/)
+# For example (PyTorch 2.3 + CUDA 12.1 + Python 3.10):
+# gsplat-1.4.0+pt23cu121-cp310-cp310-linux_x86_64.whl
+pip install gsplat-1.4.0+pt23cu121-cp310-cp310-linux_x86_64.whl
+
+# 下载依赖（download_all.py 需要）
+# 如果这里卡了，可以加临时镜像
+# export HF_ENDPOINT=https://hf-mirror.com
+python -m pip install "huggingface_hub==0.23.2" modelscope
+
+# 一键下载模型与动作数据（须在 LHM-plusplus 根目录执行）
 python scripts/download_all.py
+
+# 国内安装可以添加国内源
+-i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 ```
 
 **动作视频提取（可选）**：若需从用户上传视频提取 SMPL-X 动作，需确保存在 `engine/pose_estimation/video2motion.py`（可从 [LHM 仓库](https://github.com/aigc3d/LHM) 复制到 LHM++ 同路径）。
@@ -116,6 +187,38 @@ python scripts/download_all.py
 ```bash
 python app.py --model_name LHMPP-700M-PixelShuffle
 ```
+
+#### PyTorch3D 安装说明（`No module named 'pytorch3d'`）
+
+LHM++ 的姿态估计（`PoseEstimator`）依赖 **PyTorch3D**，3D 重建与 `to_gs_ply.py` 都会用到。
+
+
+| 平台          | 安装方式                                           |
+| ----------- | ---------------------------------------------- |
+| **Linux**   | 直接装官方 wheel（见上方命令）                             |
+| **Windows** | **无官方预编译包**（Facebook 仅提供 `linux_x86_64` wheel） |
+
+
+**Windows 可选方案：**
+
+1. **推荐：WSL2 + Ubuntu** 或 **Linux GPU 服务器** 安装 LHM++，HRM API 的 `LHM_ROOT` 指向该环境（或远程调用）。
+2. **本地联调**：`api/.env` 设 `MOCK_MODE=true`，Windows 上跑 HRM 前端 + API，不依赖 PyTorch3D。
+3. **Windows 源码编译**（耗时、需工具链）：
+  - 安装 [Visual Studio 2019/2022](https://visualstudio.microsoft.com/)（勾选「使用 C++ 的桌面开发」）
+  - 安装 [CUDA Toolkit 12.1](https://developer.nvidia.com/cuda-12-1-0-download-archive) 并设置 `CUDA_HOME`
+  - 在 **「x64 Native Tools Command Prompt for VS」** 中执行：
+
+```powershell
+python -m pip install fvcore iopath
+git clone https://github.com/facebookresearch/pytorch3d.git
+cd pytorch3d
+git checkout v0.7.6
+set DISTUTILS_USE_SDK=1
+set PYTORCH3D_NO_NINJA=1
+python setup.py install
+```
+
+编译可能需 30–60 分钟；若报 CUDA/CUB 相关错误，见 [pytorch3d Windows 安装讨论](https://github.com/facebookresearch/pytorch3d/issues/1567)。
 
 ### 2. 启动 API 后端
 
@@ -157,9 +260,9 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 python run.py
 ```
 
-- API 根路径：http://localhost:8000
-- 交互文档：http://localhost:8000/docs
-- OpenAPI JSON：http://localhost:8000/openapi.json
+- API 根路径：[http://localhost:8000](http://localhost:8000)
+- 交互文档：[http://localhost:8000/docs](http://localhost:8000/docs)
+- OpenAPI JSON：[http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 
 ### 3. 启动 Web 前端
 
@@ -190,7 +293,7 @@ npm run start    # 生产运行
 
 ## Web 界面使用
 
-打开 http://localhost:3000 ，按以下步骤操作：
+打开 [http://localhost:3000](http://localhost:3000) ，按以下步骤操作：
 
 ### 步骤 1：上传参考图片
 
@@ -257,11 +360,13 @@ curl -X POST http://localhost:8000/api/v1/avatars \
   -F "export_skinned_mesh=false"
 ```
 
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `images` | file[] | 必填 | 1–8 张人物图片 |
-| `ref_view` | int | 8 | 实际用于推理的参考视角数 |
-| `export_skinned_mesh` | bool | false | 是否同时导出 SMPL-X 蒙皮网格 |
+
+| 参数                    | 类型     | 默认    | 说明                 |
+| --------------------- | ------ | ----- | ------------------ |
+| `images`              | file[] | 必填    | 1–8 张人物图片          |
+| `ref_view`            | int    | 8     | 实际用于推理的参考视角数       |
+| `export_skinned_mesh` | bool   | false | 是否同时导出 SMPL-X 蒙皮网格 |
+
 
 响应：
 
@@ -309,11 +414,13 @@ curl -X POST http://localhost:8000/api/v1/avatars/{avatar_id}/animate \
   -F "render_backend=neural"
 ```
 
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `motion_video` | file | 必填 | 动作参考视频 |
-| `motion_frames` | int | 120 | 渲染帧数（30–1000） |
+
+| 参数               | 类型     | 默认     | 说明                                |
+| ---------------- | ------ | ------ | --------------------------------- |
+| `motion_video`   | file   | 必填     | 动作参考视频                            |
+| `motion_frames`  | int    | 120    | 渲染帧数（30–1000）                     |
 | `render_backend` | string | neural | `neural`（神经渲染）或 `gs`（纯高斯光栅，需模型支持） |
+
 
 完成后下载视频：
 
@@ -331,23 +438,27 @@ ws://localhost:8000/api/v1/avatars/{avatar_id}/motion-stream
 
 **客户端 → 服务端消息**（JSON 文本）：
 
-| type | 字段 | 说明 |
-|------|------|------|
-| `frame` | `data` | base64 JPEG 帧（可带 `data:image/jpeg;base64,` 前缀） |
-| `flush` | — | 提交缓冲帧，开始推理（至少 30 帧） |
-| `poll` | `job_id` | 查询推理任务状态 |
-| `close` | — | 关闭连接 |
+
+| type    | 字段       | 说明                                             |
+| ------- | -------- | ---------------------------------------------- |
+| `frame` | `data`   | base64 JPEG 帧（可带 `data:image/jpeg;base64,` 前缀） |
+| `flush` | —        | 提交缓冲帧，开始推理（至少 30 帧）                            |
+| `poll`  | `job_id` | 查询推理任务状态                                       |
+| `close` | —        | 关闭连接                                           |
+
 
 **服务端 → 客户端消息**：
 
-| type | 说明 |
-|------|------|
-| `ready` | 连接就绪，可开始发帧 |
-| `buffer` | 当前缓冲帧数 `{ count, required }` |
-| `processing` | 开始处理 `{ job_id, frames }` |
-| `job_started` | 任务已创建 `{ job_id }` |
-| `job_status` | 任务状态；完成时含 `video_url` |
-| `error` | 错误信息 |
+
+| type          | 说明                           |
+| ------------- | ---------------------------- |
+| `ready`       | 连接就绪，可开始发帧                   |
+| `buffer`      | 当前缓冲帧数 `{ count, required }` |
+| `processing`  | 开始处理 `{ job_id, frames }`    |
+| `job_started` | 任务已创建 `{ job_id }`           |
+| `job_status`  | 任务状态；完成时含 `video_url`        |
+| `error`       | 错误信息                         |
+
 
 示例（JavaScript）：
 
@@ -379,13 +490,15 @@ curl http://localhost:8000/api/v1/jobs/{job_id}
 
 响应字段：
 
-| 字段 | 说明 |
-|------|------|
-| `status` | `pending` / `running` / `completed` / `failed` |
-| `progress` | 0–100 |
-| `message` | 当前阶段描述 |
-| `result` | 完成时的输出路径等信息 |
-| `error` | 失败时的错误信息 |
+
+| 字段         | 说明                                             |
+| ---------- | ---------------------------------------------- |
+| `status`   | `pending` / `running` / `completed` / `failed` |
+| `progress` | 0–100                                          |
+| `message`  | 当前阶段描述                                         |
+| `result`   | 完成时的输出路径等信息                                    |
+| `error`    | 失败时的错误信息                                       |
+
 
 ---
 
@@ -420,21 +533,25 @@ HRM 在官方高斯重建之上，增加了**可选的自研后处理层**（`ap
 
 ### LHM++ 官方 vs HRM 自研
 
-| 输出 | 来源 | 说明 |
-|------|------|------|
-| Gaussian PLY | LHM++ `to_gs_ply.py` | 官方 3DGS 点云 |
+
+| 输出                   | 来源                           | 说明          |
+| -------------------- | ---------------------------- | ----------- |
+| Gaussian PLY         | LHM++ `to_gs_ply.py`         | 官方 3DGS 点云  |
 | 蒙皮网格 OBJ/GLB/骨骼 JSON | HRM `mesh_export_service.py` | 自研后处理，非官方能力 |
+
 
 ### 自研实现用了什么
 
-| 用途 | 库 / 来源 |
-|------|-----------|
-| 读取高斯 PLY 顶点坐标 | **plyfile** |
-| 高斯位移 → SMPL-X 网格顶点映射 | **scipy** `cKDTree` |
-| SMPL-X 模板网格、面片、55 关节 LBS 权重 | LHM++ **`SMPL_Layer`**（PyTorch） |
-| 写 OBJ | 手写 `v` / `f` 文本（不用 trimesh） |
-| 写 GLB | **trimesh**（`Trimesh.export()`） |
-| 骨骼与权重元数据 | **json**（稀疏权重）+ **numpy** `npz`（完整权重矩阵） |
+
+| 用途                          | 库 / 来源                                  |
+| --------------------------- | --------------------------------------- |
+| 读取高斯 PLY 顶点坐标               | **plyfile**                             |
+| 高斯位移 → SMPL-X 网格顶点映射        | **scipy** `cKDTree`                     |
+| SMPL-X 模板网格、面片、55 关节 LBS 权重 | LHM++ `**SMPL_Layer`**（PyTorch）         |
+| 写 OBJ                       | 手写 `v` / `f` 文本（不用 trimesh）             |
+| 写 GLB                       | **trimesh**（`Trimesh.export()`）         |
+| 骨骼与权重元数据                    | **json**（稀疏权重）+ **numpy** `npz`（完整权重矩阵） |
+
 
 依赖见 `api/requirements.txt`：`plyfile`、`scipy`、`trimesh`。
 
@@ -443,13 +560,13 @@ HRM 在官方高斯重建之上，增加了**可选的自研后处理层**（`ap
 1. 调用 LHM++ `to_gs_ply.py` 生成高斯 PLY（`avatar.ply`）
 2. 用 **plyfile** 读取高斯中心坐标 `(x, y, z)`
 3. 加载 LHM++ `pretrained_models/dense_sample_points` 作为表面锚点
-4. 通过 **`SMPL_Layer`** 获取 T-pose 网格顶点、三角面与 LBS 权重
+4. 通过 `**SMPL_Layer`** 获取 T-pose 网格顶点、三角面与 LBS 权重
 5. 计算高斯相对锚点的位移，用 **cKDTree** 最近邻加权插值到网格顶点
 6. 导出：
-   - `avatar_skinned.obj` — 位移后的传统网格
-   - `avatar_skeleton.json` — 55 关节名、父子关系、稀疏 LBS 权重、betas
-   - `avatar_skinned.glb` — 可选（见下方局限）
-   - `avatar_lbs_weights.npz` — 完整权重矩阵与面片索引
+  - `avatar_skinned.obj` — 位移后的传统网格
+  - `avatar_skeleton.json` — 55 关节名、父子关系、稀疏 LBS 权重、betas
+  - `avatar_skinned.glb` — 可选（见下方局限）
+  - `avatar_lbs_weights.npz` — 完整权重矩阵与面片索引
 
 ### 关于 trimesh 的局限
 
@@ -492,30 +609,36 @@ MOCK_MODE=true
 
 ### API（`api/.env`）
 
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `LHM_ROOT` | 空 | LHM-plusplus 仓库绝对路径 |
-| `MODEL_NAME` | `LHMPP-700M-PixelShuffle` | 模型名 |
-| `MODEL_PATH` | 空 | 本地权重路径（可选） |
-| `MOCK_MODE` | `false` | 是否 Mock 模式 |
-| `CORS_ORIGINS` | `http://localhost:3000` | 允许的前端源，逗号分隔 |
-| `API_PORT` | `8000` | 监听端口 |
+
+| 变量             | 默认                        | 说明                  |
+| -------------- | ------------------------- | ------------------- |
+| `LHM_ROOT`     | 空                         | LHM-plusplus 仓库绝对路径 |
+| `MODEL_NAME`   | `LHMPP-700M-PixelShuffle` | 模型名                 |
+| `MODEL_PATH`   | 空                         | 本地权重路径（可选）          |
+| `MOCK_MODE`    | `false`                   | 是否 Mock 模式          |
+| `CORS_ORIGINS` | `http://localhost:3000`   | 允许的前端源，逗号分隔         |
+| `API_PORT`     | `8000`                    | 监听端口                |
+
 
 代码内固定参数（`api/config.py`）：
 
-| 参数 | 值 | 说明 |
-|------|-----|------|
-| `max_ref_images` | 8 | 最大参考图数量 |
-| `max_motion_frames` | 1000 | 最大动作帧数 |
-| `default_motion_frames` | 120 | 默认动画帧数 |
-| `render_fps` | 30 | 输出视频帧率 |
+
+| 参数                      | 值    | 说明      |
+| ----------------------- | ---- | ------- |
+| `max_ref_images`        | 8    | 最大参考图数量 |
+| `max_motion_frames`     | 1000 | 最大动作帧数  |
+| `default_motion_frames` | 120  | 默认动画帧数  |
+| `render_fps`            | 30   | 输出视频帧率  |
+
 
 ### Web（`web/.env.local`）
 
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 后端 HTTP 地址 |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8000` | 后端 WebSocket 地址 |
+
+| 变量                    | 默认                      | 说明              |
+| --------------------- | ----------------------- | --------------- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 后端 HTTP 地址      |
+| `NEXT_PUBLIC_WS_URL`  | `ws://localhost:8000`   | 后端 WebSocket 地址 |
+
 
 ---
 
@@ -572,6 +695,94 @@ A: LHM++ 推荐 ≥8GB；可减少 `ref_view` 或 `motion_frames`。
 
 **Q: 前端跨域错误**  
 A: 检查 `CORS_ORIGINS` 是否包含前端地址（如 `http://localhost:3000`）。
+
+**Q: 安装依赖时 `chumpy` 报错 `No module named 'pip'`**  
+A: `chumpy` 的构建脚本与 pip 隔离环境不兼容。先执行 `python -m pip install --no-build-isolation chumpy`，再 `python -m pip install -r requirements.txt`。仍失败可试：`python -m pip install --no-build-isolation git+https://github.com/mattloper/chumpy.git`。
+
+**Q: `pip install torch==2.3.0` 报 `from versions: none`**  
+A: 需 Python 3.10，且用 `python -m pip install`（不要用单独的 `pip` 命令，可能与 `python` 版本不一致）。
+
+**Q: `download_all.py` 报 `No module named 'huggingface_hub'`**  
+A: 执行 `python -m pip install "huggingface_hub==0.23.2" modelscope` 后重试。
+
+**Q: 真实推理报 `No module named 'fcntl'`**  
+A: LHM++依赖的 `megfile` 在 Windows 上会导入 Unix 专用模块 `fcntl`。HRM API 已内置兼容层；若仍报错，请更新到最新代码。长期建议在 **Linux / WSL2** 上运行 LHM++ 真实推理。
+
+**Q: 真实推理报 `No module named 'blocks'`**  
+A: `blocks` 位于 `LHM-plusplus/engine/pose_estimation/blocks/`。HRM 已自动切换工作目录并补全 `sys.path`；请重启 API 后重试。
+
+**Q: 真实推理报 `No module named 'pytorch3d'`**  
+A: PyTorch3D 是 LHM++姿态估计的硬依赖；**Windows 没有官方 pip wheel**。Linux 用：`python -m pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt230/download.html`。Windows 建议 **WSL2/Linux 跑 LHM++**，或临时 `MOCK_MODE=true` 联调；若坚持本机 Windows 需从源码编译（见上文 [PyTorch3D 安装说明](#pytorch3d-安装说明no-module-named-pytorch3d)）。
+
+**Q: 任务失败且报 `data\jobs\xxx.json` 找不到**  
+A: 旧版本在 LHM++ 推理时会 `chdir` 导致 job 文件写到错误目录；已修复为固定使用 `api/data/` 绝对路径。请拉取最新代码并重启 API。
+
+**Q: Windows 上能否跑通 LHM++ 全链路？**  
+A: 官方仅支持 Linux。Windows 可跑 HRM 前端 + Mock 模式；真实推理即使过了 `fcntl`，仍可能卡在 `pointops`、`gsplat` 等 CUDA 扩展编译。推荐 WSL2 Ubuntu 或 Linux GPU 服务器。
+
+Q: No module named 'pointops_cuda'
+
+A: 1) pip install ninja cython setuptools -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
+
+2)cd hrm/LHM-plusplus/lib/pointops
+
+本地编译安装，加--user避免权限不足
+
+python [setup.py](http://setup.py) install --user
+
+如果还有权限不足，临时重载 D 盘挂载
+
+卸载原有D盘挂载
+
+sudo umount /mnt/d 
+
+带权限参数重新挂载D盘
+
+sudo mount -t drvfs D: /mnt/d -o metadata,uid=1000,gid=1000,umask=000,fmask=000,dmask=000 
+
+直接编译 cd /mnt/d/WorkSpace/mkdevkit/hrm/LHM-plusplus/lib/pointops
+
+pip install . --no-build-isolation --user
+
+Q: No module named 'diff_gaussian_rasterization'
+
+A: 这是 3D Gaussian Splatting 专用的 CUDA 算子，没有 pip 包，必须手动编译
+
+1. 先安装编译依赖
+
+pip install torch ninja cmake plyfile tqdm -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
+
+1. 克隆源码到 WSL 本地（不能放 D 盘！）
+
+cd ~
+
+git clone --recursive [https://ghproxy.net/https://github.com/graphdeco-inria/diff-gaussian-rasterization](https://ghproxy.net/https://github.com/graphdeco-inria/diff-gaussian-rasterization)
+
+cd diff-gaussian-rasterization
+
+1. 编译安装（这一步生成 .so 文件）
+
+pip install . --no-build-isolation
+
+Q: No module named 'spconv'
+
+A:1)清理旧残留
+
+pip uninstall -y spconv spconv-cu120 spconv-cu121 cumm cumm-cu121
+
+2）CUDA12.1 专用安装（清华源加速）  
+
+# 先装cumm最新稳定版
+
+pip install cumm-cu121==0.7.11 -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
+
+# 再装spconv
+
+pip install spconv-cu121==2.3.8 -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
+
+Q: No module named 'torch_scatter'
+
+A: pip install torch_scatter -f [https://data.pyg.org/whl/torch-2.3.0+cu121.html](https://data.pyg.org/whl/torch-2.3.0+cu121.html) --no-build-isolation -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
 ---
 

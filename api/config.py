@@ -1,6 +1,8 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_API_ROOT = Path(__file__).resolve().parent
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -10,8 +12,8 @@ class Settings(BaseSettings):
     model_name: str = "LHMPP-700M-PixelShuffle"
     model_path: str = ""
 
-    # 数据目录
-    data_dir: Path = Path("./data")
+    # 数据目录（固定为 api/data，避免 LHM++ 推理时 chdir 导致相对路径错乱）
+    data_dir: Path = _API_ROOT / "data"
     max_ref_images: int = 8
     max_motion_frames: int = 1000
     default_motion_frames: int = 120
