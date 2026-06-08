@@ -135,6 +135,8 @@ cd LHM-plusplus
 # 需 Python 3.10（LHM++ 官方要求）；请用 python -m pip，避免 pip 指向其他 Python 版本
 python -m pip install --upgrade pip setuptools wheel
 
+apt update && apt install -y libglx-mesa0 libgl1 libglib2.0-0
+
 # 安装 PyTorch 2.3 + CUDA 12.1（见官方 README）
 python -m pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
 python -m pip install -U xformers==0.0.26.post1 --index-url https://download.pytorch.org/whl/cu121
@@ -151,7 +153,7 @@ cd ./lib/pointops/ && python setup.py install && cd ../../
 pip install spconv-cu121
 # pip install torch_scatter, see [wheel](https://data.pyg.org/whl/) for your CUDA version
 # For example (PyTorch 2.3 + CUDA 12.1 + Python 3.10):
-pip install torch_scatter-2.1.2+pt23cu121-cp310-cp310-linux_x86_64.whl
+pip install torch_scatter -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
 
 # 安装 pointops、spconv、gsplat 等（见官方 INSTALL.md / INSTALL_CN.md）
 # PyTorch3D（Linux 预编译 wheel；Windows 见下方说明）
@@ -161,13 +163,13 @@ python -m pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipubl
 #pip install git+https://ghproxy.net/https://github.com/facebookresearch/iopath.git -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # install simple-knn
-pip install git+https://github.com/camenduru/simple-knn/
+pip install git+https://github.com/camenduru/simple-knn/ --no-build-isolation
 
 # install gsplat
 # pip install gsplat from pre-compiled [wheel](https://docs.gsplat.studio/whl/gsplat/)
 # For example (PyTorch 2.3 + CUDA 12.1 + Python 3.10):
 # gsplat-1.4.0+pt23cu121-cp310-cp310-linux_x86_64.whl
-pip install gsplat-1.4.0+pt23cu121-cp310-cp310-linux_x86_64.whl
+pip install gsplat==1.4.0+pt23cu121 --index-url https://docs.gsplat.studio/whl
 
 # 下载依赖（download_all.py 需要）
 # 如果这里卡了，可以加临时镜像
@@ -611,19 +613,19 @@ MOCK_MODE=true
 ### API（`api/.env`）
 
 
-| 变量             | 默认                        | 说明                  |
-| -------------- | ------------------------- | ------------------- |
-| `LHM_ROOT`     | 空                         | LHM-plusplus 仓库绝对路径 |
-| `MODEL_NAME`   | `LHMPP-700M-PixelShuffle` | 模型名                 |
-| `MODEL_PATH`   | 空                         | 本地权重路径（可选）          |
-| `MOCK_MODE`    | `false`                   | 是否 Mock 模式          |
-| `INFER_LOW_MEMORY` | `false`               | 低显存测试模式（见下表）      |
-| `INFER_MAX_IMAGE_SIZE` | `0`（自动）       | 参考图最大高度（px），如 `672` |
-| `INFER_REF_VIEW_MAX` | `0`（自动）         | 参考视角上限，如 `2`        |
-| `INFER_ANIM_BATCH_SIZE` | `0`（自动）      | 动作驱动每批帧数，如 `4`      |
-| `INFER_DENSE_SAMPLE_PTS` | `0`（自动）     | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时） |
-| `CORS_ORIGINS` | `http://localhost:3000`   | 允许的前端源，逗号分隔         |
-| `API_PORT`     | `8000`                    | 监听端口                |
+| 变量                       | 默认                        | 说明                                       |
+| ------------------------ | ------------------------- | ---------------------------------------- |
+| `LHM_ROOT`               | 空                         | LHM-plusplus 仓库绝对路径                      |
+| `MODEL_NAME`             | `LHMPP-700M-PixelShuffle` | 模型名                                      |
+| `MODEL_PATH`             | 空                         | 本地权重路径（可选）                               |
+| `MOCK_MODE`              | `false`                   | 是否 Mock 模式                               |
+| `INFER_LOW_MEMORY`       | `false`                   | 低显存测试模式（见下表）                             |
+| `INFER_MAX_IMAGE_SIZE`   | `0`（自动）                   | 参考图最大高度（px），如 `672`                      |
+| `INFER_REF_VIEW_MAX`     | `0`（自动）                   | 参考视角上限，如 `2`                             |
+| `INFER_ANIM_BATCH_SIZE`  | `0`（自动）                   | 动作驱动每批帧数，如 `4`                           |
+| `INFER_DENSE_SAMPLE_PTS` | `0`（自动）                   | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时） |
+| `CORS_ORIGINS`           | `http://localhost:3000`   | 允许的前端源，逗号分隔                              |
+| `API_PORT`               | `8000`                    | 监听端口                                     |
 
 
 代码内固定参数（`api/config.py`）：
@@ -639,12 +641,14 @@ MOCK_MODE=true
 
 **低显存 / 测试推理**（`INFER_LOW_MEMORY=true` 时自动生效，也可单独覆盖）：
 
-| 参数 | 正常 | `INFER_LOW_MEMORY=true` |
-| --- | --- | --- |
-| 参考视角上限 | 8 | 4 |
-| 输入图最大高度 | 840 px | 560 px |
-| 动画 batch | 40 帧/批 | 8 帧/批 |
-| 体素采样点 | 160000（checkpoint） | 40000 |
+
+| 参数       | 正常                 | `INFER_LOW_MEMORY=true` |
+| -------- | ------------------ | ----------------------- |
+| 参考视角上限   | 8                  | 4                       |
+| 输入图最大高度  | 840 px             | 560 px                  |
+| 动画 batch | 40 帧/批             | 8 帧/批                   |
+| 体素采样点    | 160000（checkpoint） | 40000                   |
+
 
 显存仍不足时可设 `INFER_REF_VIEW_MAX=1`、`INFER_MAX_IMAGE_SIZE=392`、`INFER_DENSE_SAMPLE_PTS=40000`。报错含 `cumm` / `spconv` / `TensorStorage` 时优先降 **体素采样点**；需 `LHM_ROOT/pretrained_models/dense_sample_points/1_40000.ply` 等 prior 缓存存在（随 prior 模型一并下载）。
 
@@ -663,11 +667,13 @@ MOCK_MODE=true
 
 HRM **不应对 LHM-plusplus 源码做本地改动**。与官方仓库差异较大的逻辑（多视角图像归一化、PixelShuffle 下 lazy 加载 `PoseEstimator`、低显存分辨率等）已全部放在 `api/` 侧，便于随时 `git pull` 升级 LHM++。
 
-| 若曾在 LHM++ 侧改动的内容 | HRM 替代实现 |
-| --- | --- |
-| `normalize_ref_imgs` | `api/services/lhm_infer_utils.py` |
-| lazy import + 归一化 + 低显存分辨率 | `setup_loaders_for_hrm()`（同上） |
-| 重建 / 动作驱动入口 | `api/services/lhmpp_service.py` 调用上述模块 |
+
+| 若曾在 LHM++ 侧改动的内容           | HRM 替代实现                               |
+| -------------------------- | -------------------------------------- |
+| `normalize_ref_imgs`       | `api/services/lhm_infer_utils.py`      |
+| lazy import + 归一化 + 低显存分辨率 | `setup_loaders_for_hrm()`（同上）          |
+| 重建 / 动作驱动入口                | `api/services/lhmpp_service.py` 调用上述模块 |
+
 
 HRM API **仅 import** 上游未改动的函数（如 `run_tpose_export`），**不依赖**对 LHM++ 的任何 patch。
 
@@ -675,10 +681,12 @@ HRM API **仅 import** 上游未改动的函数（如 `run_tpose_export`），**
 
 历史上若需直接改 `scripts/inference/to_gs_ply.py`，diff 已归档于：
 
-| 文件 | 说明 |
-| --- | --- |
-| [`api/patches/to_gs_ply.py.patch`](api/patches/to_gs_ply.py.patch) | 完整 unified diff（供参考或 CLI 使用） |
-| [`api/patches/README.md`](api/patches/README.md) | 补丁说明与对照表 |
+
+| 文件                                                                 | 说明                           |
+| ------------------------------------------------------------------ | ---------------------------- |
+| `[api/patches/to_gs_ply.py.patch](api/patches/to_gs_ply.py.patch)` | 完整 unified diff（供参考或 CLI 使用） |
+| `[api/patches/README.md](api/patches/README.md)`                   | 补丁说明与对照表                     |
+
 
 若希望 **LHM++ CLI**（`python scripts/inference/to_gs_ply.py`）也具备相同行为，可在 LHM++ 根目录手动打补丁：
 
@@ -764,7 +772,7 @@ A: LHM++依赖的 `megfile` 在 Windows 上会导入 Unix 专用模块 `fcntl`�
 A: `blocks` 位于 `LHM-plusplus/engine/pose_estimation/blocks/`。HRM 已自动切换工作目录并补全 `sys.path`；请重启 API 后重试。
 
 **Q: 真实推理报 `No module named 'pytorch3d'`**  
-A: PyTorch3D 是 LHM++姿态估计的硬依赖；**Windows 没有官方 pip wheel**。Linux 用：`python -m pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt230/download.html`。Windows 建议 **WSL2/Linux 跑 LHM++**，或临时 `MOCK_MODE=true` 联调；若坚持本机 Windows 需从源码编译（见上文 [PyTorch3D 安装说明](#pytorch3d-安装说明no-module-named-pytorch3d)）。
+A: PyTorch3D 是 LHM++姿态估计的硬依赖；**Windows 没有官方 pip wheel**。Linux 用：`python -m pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt230/download.html`。Windows 建议 **WSL2/Linux 跑 LHM++**，或临时 `MOCK_MODE=true` 联调；若坚持本机 Windows 需从源码编译（见上文 [PyTorch3D 安装说明](#pytorch3d-安装说明no-module-named-pytorch3d)）。  
 
 **Q: 任务失败且报 `data\jobs\xxx.json` 找不到**  
 A: 旧版本在 LHM++ 推理时会 `chdir` 导致 job 文件写到错误目录；已修复为固定使用 `api/data/` 绝对路径。请拉取最新代码并重启 API。
@@ -800,11 +808,11 @@ Q: No module named 'diff_gaussian_rasterization'
 
 A: 这是 3D Gaussian Splatting 专用的 CUDA 算子，没有 pip 包，必须手动编译
 
-1. 先安装编译依赖
+1)先安装编译依赖
 
 pip install torch ninja cmake plyfile tqdm -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
-1. 克隆源码到 WSL 本地（不能放 D 盘！）
+2)克隆源码到 WSL 本地（不能放 D 盘！）
 
 cd ~
 
@@ -812,7 +820,7 @@ git clone --recursive [https://ghproxy.net/https://github.com/graphdeco-inria/di
 
 cd diff-gaussian-rasterization
 
-1. 编译安装（这一步生成 .so 文件）
+3)编译安装（这一步生成 .so 文件）
 
 pip install . --no-build-isolation
 
@@ -824,17 +832,27 @@ pip uninstall -y spconv spconv-cu120 spconv-cu121 cumm cumm-cu121
 
 2）CUDA12.1 专用安装（清华源加速）  
 
-# 先装cumm最新稳定版
+先装cumm最新稳定版
 
 pip install cumm-cu121==0.7.11 -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
-# 再装spconv
+再装spconv
 
 pip install spconv-cu121==2.3.8 -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
 Q: No module named 'torch_scatter'
 
 A: pip install torch_scatter -f [https://data.pyg.org/whl/torch-2.3.0+cu121.html](https://data.pyg.org/whl/torch-2.3.0+cu121.html) --no-build-isolation -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
+
+Q: TypeError: argument of type 'bool' is not iterable 和 ValueError: set share=True
+
+这个 `TypeError: argument of type 'bool' is not iterable` 的崩溃是由 **Gradio 内部的 API 架构解析器** 与环境中的 **Pydantic** 版本不兼容导致的。
+
+当 Gradio 4.43.0 在后台自动生成 API 文档架构（Swagger JSON）时，底层的 Pydantic 输出了布尔值（`bool`），而这个版本的 Gradio 却预期它是一个字典，从而引发了系统崩溃 [1]。
+
+这个问题在 Gradio 较新的小版本中已经修复。直接将 `gradio` 和 `gradio_client` 一键升级到最新版即可彻底消除此架构解析漏洞：
+
+pip install --upgrade gradio gradio_client
 
 ---
 

@@ -13141,3 +13141,201 @@ python -m pip install numpy==1.23.0   # 3.12 上通常会失败
 _**User**_
 
 我能把python 3.12删掉换python3.10吗？
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants to know if they can remove Python 3.12 and use Python 3.10 instead for their LHM++/HRM setup.</details></think>
+
+_**Agent (default)**_
+
+## 可以，但建议「并存 + 专用环境」，不要硬删系统 Python
+
+**可以换到 Python 3.10 跑 LHM++/HRM**，这也是推荐做法。  
+**不建议**把系统自带的 Python 3.12 整个卸掉（Ubuntu/WSL 里很多工具依赖它，删了可能把系统搞坏）。
+
+正确做法：**保留 3.12，另外装 3.10，项目里只用 3.10 的 venv。**
+
+---
+
+## WSL / Ubuntu 推荐步骤
+
+```bash
+# 1. 安装 3.10（不删 3.12）
+sudo apt update
+sudo apt install -y python3.10 python3.10-venv python3.10-dev
+
+# 2. 确认版本
+python3.10 --version   # Python 3.10.x
+
+# 3. 为 LHM++ 建独立虚拟环境
+python3.10 -m venv ~/venv/lhmpp
+source ~/venv/lhmpp/bin/activate
+
+# 4. 之后所有 pip 都用 python -m pip（避免装到 3.12）
+python -m pip install --upgrade pip setuptools wheel
+python --version          # 应是 3.10.x
+python -m pip --version   # pip 也应指向 3.10
+
+# 5. 按 README 装 torch 2.3 + LHM++ 依赖
+python -m pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 \
+  --index-url https://download.pytorch.org/whl/cu121
+```
+
+每次进项目前先：
+
+```bash
+source ~/venv/lhmpp/bin/activate
+cd /mnt/d/WorkSpace/mkdevkit/hrm/api
+python run.py
+```
+
+---
+
+## 若用的是 Docker 镜像（3.12 + torch 2.3）
+
+不要在容器里「删 Python 3.12」，而是：
+
+- **换基础镜像**：`python:3.10` + 自己装 `torch 2.3 cu121`，或  
+- 在 Dockerfile 里 `apt install python3.10` 并 `python3.10 -m venv /app/venv`
+
+---
+
+## 怎么确认没再用 3.12
+
+```bash
+which python
+python --version
+python -c "import sys; print(sys.executable)"
+```
+
+应指向 `~/venv/lhmpp/bin/python` 且版本为 **3.10.x**。
+
+---
+
+## 小结
+
+| 做法 | 建议 |
+|------|------|
+| 删系统 Python 3.12 | 不推荐 |
+| 安装 3.10 + venv 跑 LHM++ | 推荐 |
+| torch 2.3 + CUDA 12.1 | 继续用，不用改 |
+
+如果你说一下是 **本机 WSL** 还是 **Docker 容器**，我可以按你的环境写一份更短的「从零到能跑 API」命令清单。
+
+---
+
+_**User**_
+
+SMPL_Layer.forward() missing 1 required positional argument: 'K'
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+Status: **loading**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+Status: **loading**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **0** directories</summary>
+
+No results found
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **0** directories</summary>
+
+No results found
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+Status: **loading**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>

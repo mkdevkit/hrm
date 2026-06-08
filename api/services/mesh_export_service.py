@@ -142,26 +142,17 @@ def _load_smplx_mesh(
     betas_t = torch.tensor(betas[:10], dtype=torch.float32, device=device).unsqueeze(0)
 
     batch_size = 1
-    body_pose = torch.zeros(batch_size, 21, 3, device=device)
-    jaw_pose = torch.zeros(batch_size, 1, 3, device=device)
-    leye_pose = torch.zeros(batch_size, 1, 3, device=device)
-    reye_pose = torch.zeros(batch_size, 1, 3, device=device)
-    lhand_pose = torch.zeros(batch_size, 15, 3, device=device)
-    rhand_pose = torch.zeros(batch_size, 15, 3, device=device)
-    root_pose = torch.zeros(batch_size, 1, 3, device=device)
-    transl = torch.zeros(batch_size, 3, device=device)
-
-    poses = torch.cat(
-        [root_pose, body_pose, jaw_pose, leye_pose, reye_pose, lhand_pose, rhand_pose],
-        dim=1,
-    )
+    # T-pose：53 关节 axis-angle（与 SMPL_Layer.forward_local 一致，无需相机 K）
+    poses = torch.zeros(batch_size, 53, 3, device=device)
 
     with torch.no_grad():
-        out = layer(poses, betas_t, None, None, transl=transl, rot6d=False)
+        output = layer.forward_local(poses, betas_t)
+        if output is None:
+            raise RuntimeError("SMPL_Layer.forward_local 返回空结果")
 
-    verts = out["v3d"][0].detach().cpu().numpy().astype(np.float32)
-    faces = layer.faces.astype(np.int32)
-    weights = layer.lbs_weights.detach().cpu().numpy().astype(np.float32)
+    verts = output.vertices[0].detach().cpu().numpy().astype(np.float32)
+    faces = layer.bm_x.faces_tensor.detach().cpu().numpy().astype(np.int32)
+    weights = layer.bm_x.lbs_weights.detach().cpu().numpy().astype(np.float32)
     joint_names = SMPLX_JOINT_NAMES[: weights.shape[1]]
     return verts, faces, weights, joint_names
 
