@@ -25,7 +25,7 @@
   - [摄像头流驱动（WebSocket）](#摄像头流驱动websocket)
   - [任务查询](#任务查询)
 - [输出文件说明](#输出文件说明)
-- [蒙皮网格导出说明](#蒙皮网格导出说明)
+- [蒙皮网格导出与实现原理](#蒙皮网格导出与实现原理)
 - [Mock 模式（无 GPU 联调）](#mock-模式无-gpu-联调)
 - [配置项参考](#配置项参考)
 - [不修改 LHM-plusplus 仓库](#不修改-lhm-plusplus-仓库)
@@ -63,10 +63,10 @@ api/data/
 | --------- | --------------------------------------------------- | -------------------------------------- |
 | 健康检查      | `GET /api/v1/health`                                | 服务状态、LHM++ 可用性、是否 Mock 模式              |
 | 多图 3D 重建  | `POST /api/v1/avatars`                              | 上传 1–8 张全身人物图，导出 Gaussian Splat `.ply` |
-| 蒙皮网格导出    | `POST /api/v1/avatars` + `export_skinned_mesh=true` | 同时导出 SMPL-X 蒙皮网格 OBJ/GLB + 骨骼 JSON     |
+| 蒙皮网格导出    | `POST /api/v1/avatars` + `export_skinned_mesh=true` | 同时导出 SMPL-X 蒙皮 **FBX** + 骨骼 JSON（需 Blender） |
 | 查询 Avatar | `GET /api/v1/avatars/{id}`                          | 获取元数据与生成结果路径                           |
 | 下载高斯模型    | `GET /api/v1/avatars/{id}/model`                    | 下载 `.ply`                              |
-| 下载蒙皮网格    | `GET /api/v1/avatars/{id}/mesh?format=obj           | glb`                                   |
+| 下载蒙皮 FBX  | `GET /api/v1/avatars/{id}/mesh?format=fbx`          | 带 Armature 的蒙皮 FBX（Unity/Maya）          |
 | 下载骨骼      | `GET /api/v1/avatars/{id}/skeleton`                 | SMPL-X 55 关节 + LBS 权重 JSON             |
 | 预览图       | `GET /api/v1/avatars/{id}/preview`                  | 参考图预览                                  |
 | 动作视频驱动    | `POST /api/v1/avatars/{id}/animate`                 | 上传动作视频，渲染动画 MP4                        |
@@ -302,7 +302,7 @@ npm run start    # 生产运行
 
 - 拖拽或选择 **1–8 张**全身人物照片（不同角度更佳，无需相机位姿）
 - 调整 **参考视角数量**（1–8，默认 8）
-- 可选：勾选 **「同时导出 SMPL-X 蒙皮网格」**（见 [蒙皮网格导出说明](#蒙皮网格导出说明)）
+- 可选：勾选 **「同时导出 SMPL-X 蒙皮网格」**（见 [蒙皮网格导出与实现原理](#蒙皮网格导出与实现原理)）
 - 点击 **「开始 3D 重建」**
 
 ### 步骤 2：等待重建完成
@@ -310,7 +310,7 @@ npm run start    # 生产运行
 - 页面显示任务进度条与状态（`pending` → `running` → `completed`）
 - 完成后可预览参考图，并下载：
   - **Gaussian Splat PLY**（高斯点云模型）
-  - **蒙皮网格 OBJ / GLB**（若已开启导出开关）
+  - **蒙皮 FBX**（若已开启导出且服务器已装 Blender）
   - **SMPL-X 骨骼 JSON**（若已开启导出开关）
 
 ### 步骤 3：动作驱动
@@ -387,7 +387,7 @@ curl -X POST http://localhost:8000/api/v1/avatars \
 curl http://localhost:8000/api/v1/jobs/{job_id}
 ```
 
-任务 `status` 为 `completed` 时，`result` 中包含 `ply_path`、`preview_path` 等路径；若开启蒙皮导出，还包含 `mesh_obj_path`、`skeleton_json_path` 等。
+任务 `status` 为 `completed` 时，`result` 中包含 `ply_path`、`preview_path` 等路径；若开启蒙皮导出，还包含 `mesh_fbx_path`、`skeleton_json_path` 等。
 
 ### 下载模型文件
 
@@ -395,13 +395,10 @@ curl http://localhost:8000/api/v1/jobs/{job_id}
 # 高斯 PLY
 curl -O http://localhost:8000/api/v1/avatars/{avatar_id}/model
 
-# 蒙皮网格 OBJ
-curl -O "http://localhost:8000/api/v1/avatars/{avatar_id}/mesh?format=obj"
+# 蒙皮 FBX（Unity / Maya）
+curl -O "http://localhost:8000/api/v1/avatars/{avatar_id}/mesh?format=fbx"
 
-# 蒙皮网格 GLB
-curl -O "http://localhost:8000/api/v1/avatars/{avatar_id}/mesh?format=glb"
-
-# SMPL-X 骨骼 JSON
+# SMPL-X 骨骼 JSON（权重与关节元数据）
 curl -O http://localhost:8000/api/v1/avatars/{avatar_id}/skeleton
 
 # 预览图
@@ -517,8 +514,9 @@ curl http://localhost:8000/api/v1/jobs/{job_id}
 │   ├── ref_images/      # 预处理后的参考图
 │   ├── avatar.ply       # 3D Gaussian Splat（LHM++ 官方 to_gs_ply 导出）
 │   ├── betas.json       # SMPL-X 体型参数（真实推理时）
-│   ├── avatar_skinned.obj          # 蒙皮网格（可选）
-│   ├── avatar_skinned.glb            # 蒙皮网格 GLB（可选）
+│   ├── avatar.ply                  # 3D Gaussian Splat
+│   ├── avatar_skinned.obj          # 蒙皮网格中间产物（Blender 导入用，内部）
+│   ├── avatar_skinned.fbx          # 蒙皮 FBX（可选，Unity/Maya）
 │   ├── avatar_skeleton.json        # SMPL-X 骨骼与权重（可选）
 │   └── avatar_lbs_weights.npz      # 完整 LBS 权重矩阵（可选）
 ├── motion/              # 上传的动作视频
@@ -528,65 +526,186 @@ curl http://localhost:8000/api/v1/jobs/{job_id}
 
 ---
 
-## 蒙皮网格导出说明
+## 蒙皮网格导出与实现原理
 
-LHM++ **官方**仅提供 3D Gaussian Splatting PLY 导出（`scripts/inference/to_gs_ply.py`），**不提供**传统蒙皮网格 OBJ/GLB 一键导出。
+LHM++ **官方**仅提供 3D Gaussian Splatting PLY 导出（`scripts/inference/to_gs_ply.py`），**不提供**传统蒙皮网格或 FBX 一键导出。
 
-HRM 在官方高斯重建之上，增加了**可选的自研后处理层**（`api/services/mesh_export_service.py`），将高斯点云转换为带 SMPL-X 骨骼的传统网格，便于导入 Blender / Maya / Unity。
+HRM 在官方高斯重建之上，增加了**可选的自研后处理层**（`api/services/mesh_export_service.py` + `api/services/blender_fbx_export.py`），将 3DGS 点云映射到 SMPL-X 模板网格，并通过 **Blender headless** 导出带骨骼绑定的 FBX，便于导入 Unity / Maya。
+
+### 总体数据流
+
+```mermaid
+flowchart LR
+  subgraph input [输入]
+    IMG[参考人物图 1–8 张]
+  end
+
+  subgraph lhm [LHM++ 官方推理]
+    REC[3D 重建]
+    PLY[avatar.ply\n3D Gaussian Splat]
+  end
+
+  subgraph hrm [HRM 自研后处理]
+    ANC[dense_sample 锚点 PLY]
+    SMPL[SMPL-X T-pose\n网格 + LBS 权重 + 关节]
+    DISP[高斯位移场 → 网格顶点]
+    OBJ[avatar_skinned.obj]
+    SKEL[avatar_skeleton.json\n+ avatar_lbs_weights.npz]
+    BL[Blender headless]
+    FBX[avatar_skinned.fbx]
+  end
+
+  IMG --> REC --> PLY
+  PLY --> DISP
+  ANC --> DISP
+  SMPL --> DISP
+  DISP --> OBJ
+  SMPL --> SKEL
+  OBJ --> BL
+  SKEL --> BL
+  BL --> FBX
+```
+
+Web 勾选「同时导出 SMPL-X 蒙皮网格」或 API 传 `export_skinned_mesh=true` 时，最终对用户可见的下载项为：
+
+| 文件 | 用途 |
+|------|------|
+| `avatar.ply` | 3DGS 原始表示；需 SuperSplat 等 splat 查看器预览 |
+| `avatar_skinned.fbx` | 带 Armature + 顶点组权重的蒙皮网格，直接进 Unity / Maya |
+| `avatar_skeleton.json` | 55 关节名、父子关系、T-pose 关节位置、稀疏 LBS 权重、betas |
 
 ### LHM++ 官方 vs HRM 自研
 
+| 输出 | 来源 | 说明 |
+|------|------|------|
+| Gaussian PLY | LHM++ `to_gs_ply.py` | 官方 3DGS；颜色存在每个高斯的 SH 系数中，**不是 UV 贴图** |
+| 蒙皮 FBX | HRM `mesh_export_service.py` + Blender | 自研后处理 + headless 导出，非官方能力 |
+| 骨骼 JSON / NPZ | HRM `mesh_export_service.py` | 完整蒙皮元数据；FBX 已含绑定，JSON 供脚本或调试 |
 
-| 输出                   | 来源                           | 说明          |
-| -------------------- | ---------------------------- | ----------- |
-| Gaussian PLY         | LHM++ `to_gs_ply.py`         | 官方 3DGS 点云  |
-| 蒙皮网格 OBJ/GLB/骨骼 JSON | HRM `mesh_export_service.py` | 自研后处理，非官方能力 |
+### 原理一：3DGS → SMPL-X 形体（位移场映射）
 
+LHM++ 的人体不是直接预测三角网格，而是在 SMPL-X 表面采样点上放置 **3D 高斯**（数量通常为 40000 或 160000，与 `dense_sample_pts` 一致）。每个高斯 $g_i$ 有中心坐标 $\mathbf{x}_i$，对应训练/推理时使用的表面锚点 $\mathbf{a}_i$（来自 `LHM_ROOT/pretrained_models/dense_sample_points/{cano}_{pts}.ply`）。
 
-### 自研实现用了什么
+HRM 后处理步骤：
 
+1. **读取高斯中心** — 用 `plyfile` 从 `avatar.ply` 解析所有 $(x,y,z)$。
+2. **加载锚点** — 按高斯数量匹配 `{cano}_{pts}.ply`；点数必须与高斯数 **1:1 对齐**（索引 $i$ 的高斯对应索引 $i$ 的锚点）。
+3. **计算位移场** — $\mathbf{d}_i = \mathbf{x}_i - \mathbf{a}_i$，并对 $\|\mathbf{d}_i\|$ 做上限裁剪（默认 `max_disp=0.12`），避免异常高斯拉飞网格。
+4. **加载 SMPL-X 模板** — 通过 LHM++ `SMPL_Layer.forward_local(T-pose)` 得到：
+   - 网格顶点 $\mathbf{v}_j$、三角面片
+   - 55 关节 LBS 权重矩阵 $W_{j,k}$
+   - T-pose 关节位置（写入 `joint_rest_positions`）
+5. **插值到网格顶点** — 对每个网格顶点 $\mathbf{v}_j$，在锚点集上建 `scipy.cKDTree`，取 $k$ 近邻（默认 8）的位移 $\mathbf{d}_i$，按距离反比加权：
+   $$\mathbf{v}'_j = \mathbf{v}_j + \alpha \sum_i w_{ji}\,\mathbf{d}_i$$
+   其中 $\alpha$ 为 `blend_strength`（默认 0.85）。
 
-| 用途                          | 库 / 来源                                  |
-| --------------------------- | --------------------------------------- |
-| 读取高斯 PLY 顶点坐标               | **plyfile**                             |
-| 高斯位移 → SMPL-X 网格顶点映射        | **scipy** `cKDTree`                     |
-| SMPL-X 模板网格、面片、55 关节 LBS 权重 | LHM++ `**SMPL_Layer`**（PyTorch）         |
-| 写 OBJ                       | 手写 `v` / `f` 文本（不用 trimesh）             |
-| 写 GLB                       | **trimesh**（`Trimesh.export()`）         |
-| 骨骼与权重元数据                    | **json**（稀疏权重）+ **numpy** `npz`（完整权重矩阵） |
+**结果**：保留 SMPL-X 拓扑与 LBS 权重（可绑骨、可动画），形体接近 3DGS 重建；**不含纹理**。
 
+### 原理二：Blender headless → 蒙皮 FBX
 
-依赖见 `api/requirements.txt`：`plyfile`、`scipy`、`trimesh`。
+FBX 导出不在 Python 内手写二进制，而是调用系统 **Blender**（Linux headless，无 GUI）：
 
-### 流程简述
+```
+blender --background --python api/scripts/blender_export_fbx.py -- \
+  avatar_skinned.obj avatar_skeleton.json avatar_lbs_weights.npz avatar_skinned.fbx
+```
 
-1. 调用 LHM++ `to_gs_ply.py` 生成高斯 PLY（`avatar.ply`）
-2. 用 **plyfile** 读取高斯中心坐标 `(x, y, z)`
-3. 加载 LHM++ `pretrained_models/dense_sample_points` 作为表面锚点
-4. 通过 `**SMPL_Layer`** 获取 T-pose 网格顶点、三角面与 LBS 权重
-5. 计算高斯相对锚点的位移，用 **cKDTree** 最近邻加权插值到网格顶点
-6. 导出：
-  - `avatar_skinned.obj` — 位移后的传统网格
-  - `avatar_skeleton.json` — 55 关节名、父子关系、稀疏 LBS 权重、betas
-  - `avatar_skinned.glb` — 可选（见下方局限）
-  - `avatar_lbs_weights.npz` — 完整权重矩阵与面片索引
+脚本逻辑（`api/scripts/blender_export_fbx.py`）：
 
-### 关于 trimesh 的局限
+1. 导入 OBJ 网格；
+2. 按 `joint_rest_positions` 与 `parents` 在 Edit Mode 创建 **Armature**（55 根骨骼，SMPL-X 命名）；
+3. 按 `avatar_lbs_weights.npz` 为每个顶点创建 **Vertex Group**，权重归一化后写入；
+4. 添加 Armature 修改器并设置父子关系；
+5. `bpy.ops.export_scene.fbx` 导出蒙皮 FBX。
 
-**trimesh 只用于 GLB 几何体导出**，不是整条管线的核心。
+配置（`api/.env`）：
 
-它对**蒙皮 GLB**（带骨骼/armature 绑定）支持很弱，因此：
+```env
+# 留空则自动在 PATH 中查找 blender
+BLENDER_EXECUTABLE=/usr/bin/blender
+```
 
-- **OBJ + `avatar_skeleton.json`** 才是完整蒙皮信息，适合 DCC 工具绑骨
-- **GLB** 仅为方便预览的**纯网格**，不含完整骨骼绑定
+#### Linux 安装 Blender（headless）
 
-若需要标准蒙皮 GLB，建议在 Blender 中导入 OBJ 与骨骼 JSON 后重新导出。
+HRM 不需要 Blender GUI，也**没有**单独的 headless 安装包；安装完整 Blender 后，用 `--background` 无界面运行即可（WSL / Ubuntu / Debian 通用）。
+
+```bash
+sudo apt update
+sudo apt install -y blender
+
+# 验证版本与 headless Python 环境
+blender --version
+blender --background --python-expr "import bpy; print('ok')"
+```
+
+最后一行应输出 `ok`。若 `blender` 不在默认路径，用 `which blender` 查看实际路径并写入 `BLENDER_EXECUTABLE`。
+
+重启 HRM API 后，健康检查应返回 `blender_available: true`：
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+**中间产物** `avatar_skinned.obj` 仍会写入输出目录，供 Blender 导入；对外下载以 **FBX + 骨骼 JSON** 为主。
+
+### 原理三：3DGS 纹理烘焙（当前未内置，设计说明）
+
+3DGS 的外观存储在 **每个高斯的球谐（SH）系数与透明度** 中，是视角相关的辐射场，**不存在**传统 OBJ 的 UV 贴图。因此：
+
+- HRM 当前 FBX 导出 = **几何 + 绑骨**，**不带 diffuse 贴图**；
+- 若需要「带纹理的 OBJ/MTL」或「带贴图的 FBX」，必须增加 **纹理烘焙（Texture Baking）** 步骤，把 3DGS 的外观迁移到 UV 空间。
+
+推荐管线（与绑骨 FBX 互补，可手工或后续集成进 HRM）：
+
+```mermaid
+flowchart TB
+  PLY[avatar.ply 3DGS]
+  MESH[SMPL 蒙皮网格\nFBX / OBJ]
+  RENDER[LHM++ 神经渲染\n多视角 RGB]
+  UV[SMPL-X 标准 UV]
+  BAKE[UV 烘焙\nBlender / PyTorch3D]
+  TEX[diffuse.png + MTL]
+  OUT[带贴图 FBX/OBJ]
+
+  PLY --> RENDER
+  MESH --> UV
+  RENDER --> BAKE
+  UV --> BAKE
+  BAKE --> TEX
+  MESH --> OUT
+  TEX --> OUT
+```
+
+| 烘焙方式 | 原理 | 质量 | HRM 现状 |
+|----------|------|------|----------|
+| **多视角神经渲染 + UV Bake** | 用 LHM++ `render_backend=neural` 在 T-pose 或固定 orbit 下渲染 N 个视角；将像素反投影/烘到 SMPL-X UV（Blender Bake 或 nvdiffrast） | 最好，侧面背面较准 | **未实现**；可在 Blender 中手工完成 |
+| **参考图投影** | 将上传的第一张参考图按正面相机 Project 到 SMPL UV | 快，仅正面较准 | **未实现** |
+| **SuGaR / 3DGS-to-PC 等** | 从 3DGS 抽独立三角网格再 unwrap + bake | 网格与 SMPL 骨架 **脱节**，需重新绑骨 | 不适用于 HRM 绑骨主线 |
+
+**为何 HRM 不直接用 SuGaR 出纹理 OBJ**：SuGaR 解决的是「场景/物体重网格化」，输出网格与 SMPL-X LBS 权重无关；HRM 的目标是 **保 SMPL 55 关节绑骨进 Unity/Maya**，几何必须基于 SMPL-X 拓扑 + 高斯位移，纹理需单独 bake。
+
+若要在 HRM API 内一键带贴图，后续可在 `mesh_export_service.py` 扩展：导出 SMPL `vt` + 调用 LHM 多视角渲染 + PyTorch3D/nvdiffrast 烘焙 → `obj + mtl + png` 或带贴图 FBX。
+
+### 自研模块与依赖
+
+| 用途 | 模块 / 库 |
+|------|-----------|
+| 高斯 PLY 解析 | `plyfile` |
+| 锚点对齐、位移插值 | `scipy.cKDTree` |
+| SMPL-X 网格 / 权重 / 关节 | LHM++ `SMPL_Layer`（PyTorch） |
+| 中间 OBJ + 骨骼 JSON + NPZ | `mesh_export_service.py` |
+| Blender subprocess | `blender_fbx_export.py` + `scripts/blender_export_fbx.py` |
+
+Python 依赖见 `api/requirements.txt`：`plyfile`、`scipy`。Blender 为**系统级依赖**，不在 pip 中。
 
 ### 使用方式
 
-勾选 Web 界面的「同时导出 SMPL-X 蒙皮网格」，或 API 传 `export_skinned_mesh=true` 即可启用。
+1. 服务器安装 Blender，配置 `BLENDER_EXECUTABLE`（可选）。
+2. Web 勾选「同时导出 SMPL-X 蒙皮网格」，或 API 传 `export_skinned_mesh=true`。
+3. 下载 **PLY**（3DGS 预览/神经渲染）、**FBX**（Unity/Maya 绑骨）、**骨骼 JSON**（元数据）。
+4. 需要贴图时，按上文「纹理烘焙」在 Blender 中对 FBX 多视角 bake，或等待 HRM 后续 API 扩展。
 
-需配置 `LHM_ROOT` 指向已安装依赖并下载 prior 模型的 `LHM-plusplus` 目录（示例：`../LHM-plusplus`）。
+需配置 `LHM_ROOT` 指向已安装依赖并下载 prior 模型的 `LHM-plusplus` 目录；低显存时确保存在 `pretrained_models/dense_sample_points/1_40000.ply` 等 prior 缓存，且与高斯点数一致。
 
 ---
 
@@ -624,6 +743,7 @@ MOCK_MODE=true
 | `INFER_REF_VIEW_MAX`     | `0`（自动）                   | 参考视角上限，如 `2`                             |
 | `INFER_ANIM_BATCH_SIZE`  | `0`（自动）                   | 动作驱动每批帧数，如 `4`                           |
 | `INFER_DENSE_SAMPLE_PTS` | `0`（自动）                   | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时） |
+| `BLENDER_EXECUTABLE`     | 空（自动查找 PATH）              | Blender 可执行文件路径，蒙皮 FBX 导出必需（Linux: `/usr/bin/blender`） |
 | `CORS_ORIGINS`           | `http://localhost:3000`   | 允许的前端源，逗号分隔                              |
 | `API_PORT`               | `8000`                    | 监听端口                                     |
 
@@ -712,6 +832,8 @@ hrm/
 │   ├── patches/                  # LHM++ 可选补丁归档（HRM API 不依赖）
 │   │   ├── README.md
 │   │   └── to_gs_ply.py.patch
+│   ├── scripts/
+│   │   └── blender_export_fbx.py # Blender headless：OBJ+骨骼 → FBX
 │   ├── routers/
 │   │   ├── avatars.py            # REST：重建、下载、动画
 │   │   └── stream.py             # WebSocket：摄像头流
@@ -720,6 +842,7 @@ hrm/
 │       ├── lhm_infer_utils.py    # 推理辅助（归一化、setup_loaders，不修改 LHM++）
 │       ├── motion_service.py     # 动作视频 → SMPL-X 提取
 │       ├── mesh_export_service.py # 高斯 PLY → SMPL-X 蒙皮网格（自研后处理）
+│       ├── blender_fbx_export.py # subprocess 调用 Blender 导出 FBX
 │       └── job_manager.py        # 异步任务管理
 └── web/                          # Next.js 前端
     ├── package.json
@@ -744,8 +867,27 @@ A: 在 `api/.env` 中设置正确的 `LHM_ROOT` 路径，或临时用 `MOCK_MODE
 **Q: 动作视频无法提取 SMPL-X**  
 A: 确认 LHM++ 已安装 `video2motion.py`（可从 LHM 仓库复制），且 GPU 可用。
 
-**Q: 蒙皮网格下载 404**  
-A: 创建 Avatar 时需传 `export_skinned_mesh=true`，或在 Web 界面勾选对应开关。
+**Q: 日志 `Blender 未生成 FBX` 但 `blender --background --python-expr` 正常**  
+A: 常见原因：① headless 未启用 `io_scene_fbx` 插件（新版脚本已自动 enable）；② `avatar_skeleton.json` 为旧版无 `joint_rest_positions`，需**重新跑一遍**带 `export_skinned_mesh=true` 的重建；③ 权重顶点数与 OBJ 不一致。在服务器上手动复现（把路径换成实际 avatar 目录）：
+
+```bash
+blender --background --python /root/hrm/api/scripts/blender_export_fbx.py -- \
+  /root/hrm/api/data/avatars/{avatar_id}/output/avatar_skinned.obj \
+  /root/hrm/api/data/avatars/{avatar_id}/output/avatar_skeleton.json \
+  /root/hrm/api/data/avatars/{avatar_id}/output/avatar_lbs_weights.npz \
+  /tmp/test.fbx
+```
+
+终端会打印具体报错（如缺少 joint、FBX 插件不可用等）。修复后重启 API 并重新导出。
+
+**Q: 蒙皮 FBX 下载 404**  
+A: 创建 Avatar 时需传 `export_skinned_mesh=true`；且服务器需安装 Blender 并配置 `BLENDER_EXECUTABLE`（或保证 `blender` 在 PATH 中）。`GET /api/v1/health` 中 `blender_available` 应为 `true`。FBX 失败时骨骼 JSON 仍可能已生成。
+
+**Q: FBX 没有贴图 / 颜色**  
+A: 当前 HRM 仅导出 **几何 + 绑骨**，不含 UV 贴图。3DGS 颜色在 SH 系数中，需按 README「3DGS 纹理烘焙」章节在 Blender 中多视角 bake，或等待 HRM 后续 API 扩展。
+
+**Q: 蒙皮网格下载 404（旧版 OBJ/GLB）**  
+A: 现版对外提供 **FBX**（`/mesh?format=fbx`）与骨骼 JSON；OBJ 为内部中间文件，不再作为默认下载项。
 
 **Q: 摄像头流提交后无结果**  
 A: 至少采集 30 帧再点「提交动作」；通过 WebSocket 发送 `poll` 消息查询 `job_id` 状态。

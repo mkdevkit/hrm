@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 _SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "blender_export_fbx.py"
 
 
+def _log_blender_output(proc: subprocess.CompletedProcess[str], reason: str) -> None:
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    combined = "\n".join(x for x in (out, err) if x)
+    tail = combined[-4000:] if combined else "（无 stdout/stderr）"
+    logger.error(
+        "Blender FBX 导出%s (code=%s, target=%s):\n%s",
+        reason,
+        proc.returncode,
+        proc.args[-1] if proc.args else "?",
+        tail,
+    )
+
+
 def resolve_blender_executable() -> str | None:
     if settings.blender_executable:
         p = Path(settings.blender_executable)
@@ -82,12 +96,11 @@ def export_skinned_fbx(
         return False
 
     if proc.returncode != 0:
-        stderr = (proc.stderr or proc.stdout or "").strip()
-        logger.error("Blender FBX 导出失败 (code=%s): %s", proc.returncode, stderr[-2000:])
+        _log_blender_output(proc, "失败")
         return False
 
     if not fbx_path.is_file():
-        logger.error("Blender 未生成 FBX: %s", fbx_path)
+        _log_blender_output(proc, "未生成 FBX")
         return False
 
     logger.info("FBX 导出完成: %s (%.1f KB)", fbx_path.name, fbx_path.stat().st_size / 1024)
