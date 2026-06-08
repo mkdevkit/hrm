@@ -23,6 +23,7 @@ export default function HomePage() {
   const [refView, setRefView] = useState(8);
   const [exportSkinnedMesh, setExportSkinnedMesh] = useState(false);
   const [hasSkinnedMesh, setHasSkinnedMesh] = useState(false);
+  const [hasFbx, setHasFbx] = useState(false);
   const [avatarId, setAvatarId] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("upload");
   const [job, setJob] = useState<Job | null>(null);
@@ -70,7 +71,8 @@ export default function HomePage() {
       const { avatar_id, job_id } = await createAvatar(images, refView, exportSkinnedMesh);
       setAvatarId(avatar_id);
       const finalJob = await pollJob(job_id, setJob);
-      setHasSkinnedMesh(exportSkinnedMesh && !!finalJob.result?.mesh_obj_path);
+      setHasSkinnedMesh(exportSkinnedMesh && !!finalJob.result?.skeleton_json_path);
+      setHasFbx(exportSkinnedMesh && !!finalJob.result?.mesh_fbx_path);
       setStep("ready");
     } catch (e) {
       setError(e instanceof Error ? e.message : "重建失败");
@@ -243,10 +245,10 @@ export default function HomePage() {
             onChange={(e) => setExportSkinnedMesh(e.target.checked)}
             style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
           />
-          同时导出 SMPL-X 蒙皮网格（传统 OBJ + 骨骼 JSON，保留 55 关节）
+          同时导出 SMPL-X 蒙皮网格（FBX + 骨骼 JSON，含 55 关节 LBS）
         </label>
         <p className="hint">
-          开启后会将高斯点云映射到 SMPL-X 模板网格，生成可绑骨的传统模型，便于导入 Blender / Maya / Unity。
+          开启后除 Gaussian PLY 外，还会生成 Unity/Maya 可用的蒙皮 FBX 与骨骼 JSON（需服务器安装 Blender）。
         </p>
         {step === "upload" && (
           <button className="btn" onClick={startReconstruct} disabled={!images.length}>
@@ -286,19 +288,19 @@ export default function HomePage() {
               </a>
               {hasSkinnedMesh && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.75rem" }}>
-                  <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "obj")} download>
-                    下载蒙皮网格 OBJ
-                  </a>
-                  <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "glb")} download>
-                    下载 GLB
-                  </a>
+                  {hasFbx && (
+                    <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "fbx")} download>
+                      下载蒙皮 FBX
+                    </a>
+                  )}
                   <a className="btn btn-secondary" href={skeletonUrl(avatarId)} download>
                     下载 SMPL-X 骨骼 JSON
                   </a>
                 </div>
               )}
               <p className="hint" style={{ marginTop: "0.75rem" }}>
-                PLY 可用 SuperSplat 查看；蒙皮网格含完整 SMPL-X 55 关节 LBS 权重。
+                PLY 请用 SuperSplat 等 3DGS 查看器预览；FBX 可直接导入 Unity / Maya。
+                {hasSkinnedMesh && !hasFbx && " FBX 未生成，请确认 API 服务器已安装 Blender。"}
               </p>
             </div>
           </div>

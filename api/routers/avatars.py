@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from config import settings
+from services.blender_fbx_export import blender_available
 from services.job_manager import JobManager, JobStatus
 from services.lhmpp_service import _cap_ref_view, lhmpp_service
 from services.motion_service import motion_service
@@ -59,6 +60,7 @@ def health() -> dict[str, Any]:
         "infer_ref_view_max": settings.effective_infer_ref_view_max,
         "infer_anim_batch_size": settings.effective_infer_anim_batch_size,
         "infer_dense_sample_pts": settings.effective_infer_dense_sample_pts,
+        "blender_available": blender_available(),
     }
 
 
@@ -101,7 +103,7 @@ async def create_avatar(
             export_skinned_mesh=export_skinned_mesh,
         )
         if export_skinned_mesh:
-            job_manager.update(job.id, progress=70, message="正在转换为 SMPL-X 蒙皮网格...")
+            job_manager.update(job.id, progress=70, message="正在导出 SMPL-X 蒙皮 FBX...")
         job_manager.update(job.id, progress=90, result=result)
         meta.update({"status": "ready", "job_id": job.id, **result})
         _save_meta(avatar_id, meta)
@@ -126,17 +128,25 @@ def download_model(avatar_id: str):
 
 
 @router.get("/avatars/{avatar_id}/mesh")
-def download_skinned_mesh(avatar_id: str, format: str = "obj"):
+def download_skinned_mesh(avatar_id: str, format: str = "fbx"):
     meta = _load_meta(avatar_id)
-    if format == "glb":
-        path = meta.get("mesh_glb_path")
-        filename = "avatar_skinned.glb"
-        media = "model/gltf-binary"
-    else:
+    fmt = format.lower()
+    if fmt == "fbx":
+        path = meta.get("mesh_fbx_path")
+        filename = "avatar_skinned.fbx"
+        media = "application/octet-stream"
+    elif fmt == "obj":
         path = meta.get("mesh_obj_path")
         filename = "avatar_skinned.obj"
         media = "text/plain"
+    else:
+        raise HTTPException(400, "format 仅支持 fbx 或 obj")
     if not path or not Path(path).exists():
+        if fmt == "fbx":
+            raise HTTPException(
+                404,
+                "蒙皮 FBX 尚未生成。请开启「导出蒙皮网格」并确认服务器已安装 Blender（BLENDER_EXECUTABLE）",
+            )
         raise HTTPException(404, "蒙皮网格尚未生成，请开启「导出蒙皮网格」开关")
     return FileResponse(path, filename=filename, media_type=media)
 

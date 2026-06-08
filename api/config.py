@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     infer_anim_batch_size: int = 0  # 0=自动（低显存 8，正常 40）
     infer_dense_sample_pts: int = 0  # 0=自动（低显存 40000，正常用 checkpoint 160000）
 
+    # Blender headless 路径（蒙皮 FBX 导出）；空则自动在 PATH 中查找 blender
+    blender_executable: str = ""
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = "http://localhost:3000"

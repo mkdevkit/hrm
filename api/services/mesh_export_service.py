@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 
 from config import settings
+from services.blender_fbx_export import export_skinned_fbx
+from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts
+
+logger = logging.getLogger(__name__)
 
 # SMPL-X 标准 55 关节（root + body21 + jaw + eyes2 + hands30）
 SMPLX_JOINT_NAMES: list[str] = [
@@ -115,8 +120,8 @@ def _read_ply_xyz_fallback(ply_path: Path) -> np.ndarray:
 def _load_smplx_mesh(
     lhm_root: Path,
     betas: Optional[np.ndarray] = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """从 LHM++ human_model_files 加载 SMPL-X T-pose 网格与 LBS 权重。"""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:
+    """从 LHM++ human_model_files 加载 SMPL-X T-pose 网格、LBS 权重与关节位置。"""
     import sys
     import torch
 
@@ -154,27 +159,89 @@ def _load_smplx_mesh(
     faces = layer.bm_x.faces_tensor.detach().cpu().numpy().astype(np.int32)
     weights = layer.bm_x.lbs_weights.detach().cpu().numpy().astype(np.float32)
     joint_names = SMPLX_JOINT_NAMES[: weights.shape[1]]
-    return verts, faces, weights, joint_names
+
+    if hasattr(output, "joints") and output.joints is not None:
+        joints = output.joints[0].detach().cpu().numpy().astype(np.float32)
+        if joints.ndim == 3:
+            joints = joints[0]
+    else:
+        j_reg = getattr(layer.bm_x, "J_regressor", None)
+        if j_reg is not None:
+            import torch
+
+            jv = torch.tensor(verts, dtype=torch.float32, device=j_reg.device)
+            joints = torch.matmul(j_reg, jv).detach().cpu().numpy().astype(np.float32)
+        else:
+            joints = _estimate_joint_positions(verts, weights, len(joint_names))
+
+    return verts, faces, weights, joint_names, joints
 
 
-def _load_anchor_points(lhm_root: Path, count: Optional[int] = None) -> np.ndarray:
-    """加载 LHM++ 在 SMPL-X 表面的采样锚点。"""
-    candidates = [
-        lhm_root / "pretrained_models" / "dense_sample_points" / "smplx_dense_points.npy",
-        lhm_root / "pretrained_models" / "dense_sample_points" / "dense_points.npy",
-        lhm_root / "pretrained_models" / "dense_sample_points" / "points.npy",
-    ]
-    for path in candidates:
-        if path.exists():
-            pts = np.load(path).astype(np.float32)
-            if pts.ndim == 3:
-                pts = pts[0]
-            if count and len(pts) > count:
-                idx = np.linspace(0, len(pts) - 1, count, dtype=int)
-                pts = pts[idx]
-            return pts
+def _estimate_joint_positions(
+    verts: np.ndarray,
+    weights: np.ndarray,
+    joint_count: int,
+) -> np.ndarray:
+    """无 joints 输出时，用 LBS 权重对顶点加权估计关节位置。"""
+    joints = np.zeros((joint_count, 3), dtype=np.float32)
+    for ji in range(joint_count):
+        w = weights[:, ji]
+        total = float(w.sum())
+        if total > 1e-6:
+            joints[ji] = (verts * w[:, None]).sum(axis=0) / total
+    return joints
 
-    verts, _, _, _ = _load_smplx_mesh(lhm_root)
+
+def _read_ply_xyz(ply_path: Path) -> np.ndarray:
+    """读取 PLY 顶点坐标（dense_sample prior 与 3DGS 导出共用）。"""
+    return read_gaussian_ply_xyz(ply_path)
+
+
+def _load_anchor_points(
+    lhm_root: Path,
+    *,
+    gaussian_count: Optional[int] = None,
+    cano_pose_type: int = 1,
+) -> np.ndarray:
+    """加载 LHM++ 在 SMPL-X 表面的 dense_sample 锚点（与推理时 `{cano}_{pts}.ply` 一致）。"""
+    cache_dir = lhm_root / "pretrained_models" / "dense_sample_points"
+
+    if gaussian_count and gaussian_count > 0:
+        for cano in (cano_pose_type, 0, 1):
+            path = cache_dir / f"{cano}_{gaussian_count}.ply"
+            if path.is_file():
+                pts = _read_ply_xyz(path)
+                logger.info("锚点 PLY: %s (%d points)", path.name, len(pts))
+                return pts
+
+    target = gaussian_count or settings.effective_infer_dense_sample_pts or 160000
+    if target <= 0:
+        target = 160000
+    resolved = resolve_dense_sample_pts(lhm_root, target, cano_pose_type)
+    if resolved > 0:
+        for cano in (cano_pose_type, 0, 1):
+            path = cache_dir / f"{cano}_{resolved}.ply"
+            if path.is_file():
+                pts = _read_ply_xyz(path)
+                if gaussian_count and len(pts) != gaussian_count:
+                    logger.warning(
+                        "锚点数量 (%d) 与高斯数量 (%d) 不一致；可用 prior: %s",
+                        len(pts),
+                        gaussian_count,
+                        list_dense_sample_cache(lhm_root),
+                    )
+                else:
+                    logger.info("锚点 PLY: %s (%d points)", path.name, len(pts))
+                return pts
+
+    available = list_dense_sample_cache(lhm_root)
+    logger.warning(
+        "未找到 dense_sample_points prior（目录 %s，可见: %s），"
+        "回退到 SMPL-X 网格顶点，蒙皮网格会严重失真",
+        cache_dir,
+        available or "（空）",
+    )
+    verts, _, _, _, _ = _load_smplx_mesh(lhm_root)
     return verts
 
 
@@ -190,9 +257,13 @@ def apply_gaussian_displacement(
     """将高斯相对锚点的位移场映射到 SMPL-X 网格顶点。"""
     from scipy.spatial import cKDTree
 
-    n_gs = min(len(gaussian_xyz), len(anchor_xyz))
-    gaussian_xyz = gaussian_xyz[:n_gs]
-    anchor_xyz = anchor_xyz[:n_gs]
+    if len(gaussian_xyz) != len(anchor_xyz):
+        raise RuntimeError(
+            f"高斯点数 ({len(gaussian_xyz)}) 与锚点数 ({len(anchor_xyz)}) 不一致，"
+            "无法按索引对齐位移场。请确认推理体素采样与 "
+            "LHM_ROOT/pretrained_models/dense_sample_points 中的 prior PLY 一致（如 1_40000.ply），"
+            "并重新导出蒙皮网格。"
+        )
 
     displacement = gaussian_xyz - anchor_xyz
     norms = np.linalg.norm(displacement, axis=1, keepdims=True)
@@ -226,6 +297,7 @@ def _write_skeleton_json(
     parents: list[int],
     betas: list[float],
     weights: np.ndarray,
+    joint_rest_positions: np.ndarray,
 ) -> None:
     sparse_weights: list[dict[str, Any]] = []
     for vi, row in enumerate(weights):
@@ -237,31 +309,16 @@ def _write_skeleton_json(
 
     data = {
         "format": "SMPL-X-skinned-mesh",
-        "version": 1,
+        "version": 2,
         "joint_count": len(joint_names),
         "joint_names": joint_names,
         "parents": parents[: len(joint_names)],
         "betas": betas,
+        "joint_rest_positions": joint_rest_positions.tolist(),
         "weights_sparse": sparse_weights,
-        "note": "传统蒙皮网格，可用 Blender/Maya 导入 OBJ 并绑定此骨骼权重",
+        "note": "SMPL-X 蒙皮数据；FBX 含骨骼绑定，JSON 含完整权重与关节 T-pose 位置",
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _write_glb_skinned(
-    path: Path,
-    verts: np.ndarray,
-    faces: np.ndarray,
-) -> bool:
-    """尝试导出 GLB（依赖 trimesh，仅几何体，无骨骼绑定）。"""
-    try:
-        import trimesh
-
-        mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
-        mesh.export(str(path))
-        return path.exists()
-    except Exception:
-        return False
 
 
 def _mock_skinned_export(output_dir: Path) -> dict[str, Any]:
@@ -287,19 +344,25 @@ def _mock_skinned_export(output_dir: Path) -> dict[str, Any]:
     weights = np.zeros((len(verts), 55), dtype=np.float32)
     weights[:8, 0] = 1.0
     weights[8:, 15] = 1.0
+    joint_positions = _estimate_joint_positions(verts, weights, 55)
 
     obj_path = output_dir / "avatar_skinned.obj"
     skel_path = output_dir / "avatar_skeleton.json"
-    glb_path = output_dir / "avatar_skinned.glb"
+    fbx_path = output_dir / "avatar_skinned.fbx"
+    weights_path = output_dir / "avatar_lbs_weights.npz"
 
     _write_obj(obj_path, verts, faces)
-    _write_skeleton_json(skel_path, SMPLX_JOINT_NAMES, SMPLX_PARENTS, [0.0] * 10, weights)
-    _write_glb_skinned(glb_path, verts, faces)
+    _write_skeleton_json(
+        skel_path, SMPLX_JOINT_NAMES, SMPLX_PARENTS, [0.0] * 10, weights, joint_positions
+    )
+    np.savez_compressed(weights_path, weights=weights, faces=faces)
+    fbx_ok = export_skinned_fbx(obj_path, skel_path, weights_path, fbx_path)
 
     return {
         "mesh_obj_path": str(obj_path),
+        "mesh_fbx_path": str(fbx_path) if fbx_ok else None,
         "skeleton_json_path": str(skel_path),
-        "mesh_glb_path": str(glb_path) if glb_path.exists() else None,
+        "lbs_weights_path": str(weights_path),
         "joint_count": 55,
         "mock": True,
     }
@@ -312,7 +375,7 @@ def export_skinned_mesh_from_gaussian(
     betas: Optional[list[float] | np.ndarray] = None,
     lhm_root: Optional[str] = None,
 ) -> dict[str, Any]:
-    """高斯 PLY → SMPL-X 蒙皮网格（OBJ + 骨骼 JSON + 可选 GLB）。"""
+    """高斯 PLY → SMPL-X 蒙皮网格（OBJ 中间产物 + FBX + 骨骼 JSON）。"""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if settings.mock_mode:
@@ -331,24 +394,32 @@ def export_skinned_mesh_from_gaussian(
     betas_arr = np.asarray(betas if betas is not None else np.zeros(10), dtype=np.float32)
 
     gaussian_xyz = read_gaussian_ply_xyz(ply_path)
-    anchor_xyz = _load_anchor_points(root, count=len(gaussian_xyz))
-    mesh_verts, faces, lbs_weights, joint_names = _load_smplx_mesh(root, betas_arr)
+    logger.info("高斯 PLY: %s (%d points)", ply_path.name, len(gaussian_xyz))
+    anchor_xyz = _load_anchor_points(root, gaussian_count=len(gaussian_xyz))
+    mesh_verts, faces, lbs_weights, joint_names, joint_positions = _load_smplx_mesh(root, betas_arr)
     displaced_verts = apply_gaussian_displacement(mesh_verts, gaussian_xyz, anchor_xyz)
 
     obj_path = output_dir / "avatar_skinned.obj"
     skel_path = output_dir / "avatar_skeleton.json"
-    glb_path = output_dir / "avatar_skinned.glb"
+    fbx_path = output_dir / "avatar_skinned.fbx"
     weights_path = output_dir / "avatar_lbs_weights.npz"
 
     _write_obj(obj_path, displaced_verts, faces)
-    _write_skeleton_json(skel_path, joint_names, SMPLX_PARENTS, betas_arr.tolist(), lbs_weights)
+    _write_skeleton_json(
+        skel_path,
+        joint_names,
+        SMPLX_PARENTS,
+        betas_arr.tolist(),
+        lbs_weights,
+        joint_positions,
+    )
     np.savez_compressed(weights_path, weights=lbs_weights, faces=faces)
-    glb_ok = _write_glb_skinned(glb_path, displaced_verts, faces)
+    fbx_ok = export_skinned_fbx(obj_path, skel_path, weights_path, fbx_path)
 
     return {
         "mesh_obj_path": str(obj_path),
+        "mesh_fbx_path": str(fbx_path) if fbx_ok else None,
         "skeleton_json_path": str(skel_path),
-        "mesh_glb_path": str(glb_path) if glb_ok else None,
         "lbs_weights_path": str(weights_path),
         "joint_count": len(joint_names),
         "vertex_count": int(len(displaced_verts)),

@@ -22,7 +22,7 @@ export interface AvatarMeta {
   job_id?: string;
   export_skinned_mesh?: boolean;
   mesh_obj_path?: string;
-  mesh_glb_path?: string;
+  mesh_fbx_path?: string;
   skeleton_json_path?: string;
   joint_count?: number;
   last_animation?: Record<string, unknown>;
@@ -94,7 +94,7 @@ export function modelUrl(avatarId: string) {
   return `${API_BASE}/api/v1/avatars/${avatarId}/model`;
 }
 
-export function skinnedMeshUrl(avatarId: string, format: "obj" | "glb" = "obj") {
+export function skinnedMeshUrl(avatarId: string, format: "fbx" | "obj" = "fbx") {
   return `${API_BASE}/api/v1/avatars/${avatarId}/mesh?format=${format}`;
 }
 
