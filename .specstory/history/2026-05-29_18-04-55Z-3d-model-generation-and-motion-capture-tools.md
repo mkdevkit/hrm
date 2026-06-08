@@ -29805,8 +29805,18 @@ blender --background --python-expr "import bpy; print('ok')" 验证通过，但E
 
 _**Agent (default)**_
 
+<think><details><summary>Thought Process</summary>
+The user confirmed that Blender functions correctly with a simple Python expression test, but FBX export is failing because Blender runs without generating the expected FBX file.</details></think>
+
+_**Agent (default)**_
+
+排查 FBX 未生成的原因：先查看导出脚本、日志与失败任务的中间文件。
+
+
+_**Agent (default)**_
+
 <tool-use data-tool-type="read" data-tool-name="read_file_v2">
-<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
 
 </details>
 </tool-use>
@@ -29819,7 +29829,7 @@ _**Agent (default)**_
 _**Agent (default)**_
 
 <tool-use data-tool-type="read" data-tool-name="read_file_v2">
-<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
 
 </details>
 </tool-use>
@@ -29833,13 +29843,974 @@ _**Agent (default)**_
 
 <tool-use data-tool-type="search" data-tool-name="glob_file_search">
 <details>
-<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **0** directories</summary>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
 
-No results found
+Directory: **D:\WorkSpace\mkdevkit\hrm\api\data** (0 files)
+
 </details>
 </tool-use>
 
 <tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
 <summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+Blender exits successfully with code 0, yet the FBX file fails to be generated.
+
+This typically happens when:
+1. Python script throws exception but Blender still exits 0 - actually Blender usually exits non-zero on script exception
+2. The script never runs main() - wrong argv parsing when blender passes extra args
+3. OBJ import fails silently - selected_objects empty but no exception? Would raise RuntimeError
+4. **Critical bug**: When using `bpy.ops.wm.obj_import`, maybe objects aren't in `selected_objects` - in Blender 3.6+ obj_import might not select objects by default!
+
+In Blender 4.x, `bpy.ops.wm.obj_import` may import objects without selecting them, causing `bpy.context.selected_objects` to be empty and leading to a RuntimeError that should result in a non-zero exit code. The script's argv parsing for `--python script.py -- args` should handle additional arguments correctly. Additionally, the FBX export may fail if the FBX addon is not enabled in headless Blender.
+
+FBX export functionality in Blender 3.0+ relies on the `io_scene_fbx` addon, which may not be enabled by default in headless mode. This addon must be manually enabled using `bpy.ops.preferences.addon_enable(module="io_scene_fbx")` for FBX exports to work properly.
+
+Blender may fail to generate an FBX file due to zero-length bones, invalid bone names, or mismatches between weight shapes and vertex counts. In headless mode, the `io_scene_fbx` addon must be manually enabled for FBX export to work, as it's often disabled by default. A script can enable this addon using `addon_utils.enable("io_scene_fbx", default_set=True, persistent=True)`.
+
+The FBX export functionality in Blender 3.0+ depends on the `io_scene_fbx` addon, which is not enabled by default in headless mode and must be activated manually for successful exports.
+
+Or check if the FBX export operator is available; if not, raise a runtime error indicating the `io_scene_fbx` addon needs to be enabled.
+
+To address OBJ import not selecting objects, modify the import function to retrieve the newly added mesh by comparing object sets before and after import.
+
+If no meshes are found after import, the script checks `bpy.context.selected_objects` for mesh objects. However, in newer Blender versions, OBJ imports may not automatically select objects, leading to empty selections and potential errors.
+
+When Blender exits with code 0 but fails to generate an FBX file, stderr should be logged to help diagnose issues. Additionally, wrapping the main function in a try/except block and calling `sys.exit(1)` on exceptions ensures proper error handling.
+
+It's important to verify that the `io_scene_fbx` addon is enabled in headless mode, as it's required for FBX export and isn't enabled by default. On Ubuntu, Blender versions may vary (3.x or 4.x), which could introduce compatibility issues like zero-length bones or bone positioning problems in SMPL models where parent and child joints share identical head/tail positions.
+
+For SMPL-X, child joint positions differ from parent, so bones must have length. The weight matrix should match the mesh's vertex count (~10475). If the displaced mesh has the same topology, its acceptable. Missing `joint_rest_positions` can cause a RuntimeError, potentially leading to a non-zero exit code depending on how Blender handles it.
+
+To fix the issues:
+1. Enable the `io_scene_fbx` addon before exporting.
+2. Adjust OBJ import to avoid relying on object selection.
+3. Wrap the main function in a try/except block, print the traceback, and exit with code 1 on error.
+4. Log Blenders stdout/stderr when FBX generation fails despite a successful exit code.
+5. Validate that bone heads and tails are not identical to ensure minimum bone length.
+6. Check for missing `joint_rest_positions` and raise appropriate errors.
+
+Bone names should not duplicate in SMPL models, and numpy is typically available in Blenders Python environment for scripts using `--python`. Verify that the `export_scene.fbx` operator works after enabling the FBX addon. 
+
+The `read_factory_settings` option clears the scene and may disable addons, so enable the FBX addon again after applying factory settings. Bone zero length occurs when head and tail are identical, which is unlikely for child bones; however, when parent indices are valid and direction length is small, a 0.05 offset is applied to set the tail, ensuring minimal bone length.
+
+For root bones with children, setting the tail to the centroid of children is acceptable. Circular dependencies in bone parenting during edit are generally fine.
+
+Fixes will be implemented and tested locally if Blender is available on Windows. The `_create_armature` function should handle cases where tail equals head due to small mesh dimensionsthis is unlikely but possible.
+
+A weight count mismatch could occur if the number of weight rows exceeds the mesh vertex count, potentially causing errors during vertex assignment in Blender.
+
+For SMPL-X models, the mesh has approximately 10475 vertices, and the weight matrix should match this count with 55 joints per vertex, aligning with the OBJ export's vertex count.</details></think>
+
+_**Agent (default)**_
+
+怀疑 headless 模式下 FBX 插件未启用，或 OBJ 导入后未选中网格。正在修复脚本并改进错误日志。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+FAQ note added regarding re-export and manual debug command.</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\blender_fbx_export.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\blender_fbx_export.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+这个报错说明 **Blender 进程退出了，但 FBX 没写出来**。`python-expr` 能过，只说明 Blender 本身正常，**不代表 FBX 导出脚本成功**。
+
+## 已修复（请拉代码并重启 API）
+
+1. **headless 默认未启用 FBX 插件** — 脚本里会自动 `enable("io_scene_fbx")`
+2. **OBJ 导入后未选中** — 改为按导入前后对象差集找网格
+3. **脚本异常仍 exit 0** — 失败时打印 traceback 并以 `exit(1)` 退出
+4. **日志增强** — 失败时会输出 Blender 的 stdout/stderr（不再只有「未生成 FBX」）
+
+---
+
+## 请你在服务器上排查
+
+### 1. 手动跑一遍（最直接）
+
+```bash
+blender --background --python /root/hrm/api/scripts/blender_export_fbx.py -- \
+  /root/hrm/api/data/avatars/f387a3b1-6ab9-4fae-b66f-e5e8543333f2/output/avatar_skinned.obj \
+  /root/hrm/api/data/avatars/f387a3b1-6ab9-4fae-b66f-e5e8543333f2/output/avatar_skeleton.json \
+  /root/hrm/api/data/avatars/f387a3b1-6ab9-4fae-b66f-e5e8543333f2/output/avatar_lbs_weights.npz \
+  /tmp/test.fbx
+```
+
+看终端里的 **`[HRM] FBX export failed:`** 具体原因。
+
+### 2. 常见原因
+
+| 报错 | 处理 |
+|------|------|
+| `缺少 joint_rest_positions` | 这是 **旧任务**（FBX 功能上线前建的）。需 **重新跑一遍重建** 并勾选导出蒙皮 |
+| `FBX 导出插件不可用` | `apt` 的 Blender 版本过旧或过简，改用 [官方 tar.xz](https://www.blender.org/download/) 并设 `BLENDER_EXECUTABLE` |
+| `权重顶点数与 OBJ 不一致` | 重建失败或中间文件不完整，重新导出 |
+| 成功应看到 | `[HRM] FBX exported: /tmp/test.fbx` |
+
+### 3. 检查 skeleton 是否为新格式
+
+```bash
+grep joint_rest_positions \
+  /root/hrm/api/data/avatars/f387a3b1-6ab9-4fae-b66f-e5e8543333f2/output/avatar_skeleton.json
+```
+
+没有这一字段 → **必须重新重建**，旧 avatar 无法补 FBX。
+
+---
+
+## 下一步
+
+1. `git pull` 更新代码  
+2. 重启 HRM API  
+3. 对 **新 avatar** 勾选「导出蒙皮网格」再跑一遍（或对旧 avatar 重新重建）  
+4. 若仍失败，把上面 **手动命令的完整终端输出** 发我
+
+旧 avatar `f387a3b1-...` 若是 FBX 功能上线前生成的，很大概率是 **skeleton.json 缺少 `joint_rest_positions`**，重新重建即可。
+
+---
+
+_**User**_
+
+在3dgs目录创建一个查看3dgs的工具
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **47** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm** (47 files)
+
+| File |
+|------|
+| `../api/requirements.txt` |
+| `../web\src\app\page.tsx` |
+| `../api/services/mesh_export_service.py` |
+| `../api/routers/stream.py` |
+| `../web/tsconfig.json` |
+| `../web/.env.local.example` |
+| `../web/src/app/globals.css` |
+| `../api/routers/avatars.py` |
+| `../api/.env.example` |
+| `../.specstory\.project.json` |
+| `../web/package.json` |
+| `../.specstory/statistics.json` |
+| `../.specstory\history\2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md` |
+| `../.cursorindexingignore` |
+| `../api\.env.example` |
+| `../api/services/motion_service.py` |
+| `../.vscode\settings.json` |
+| `../web\src\lib\api.ts` |
+| `../api/services/lhm_infer_utils.py` |
+| `../.gitignore` |
+| `../api\config.py` |
+| `../web/next-env.d.ts` |
+| `../.specstory/cli/config.toml` |
+| `../api/patches/to_gs_ply.py.patch` |
+| `../api\scripts\blender_export_fbx.py` |
+| `../.specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md` |
+| `../api/run.py` |
+| `../api/patches/README.md` |
+| `../web/src/app/page.tsx` |
+| `../web/next.config.js` |
+| `../.specstory/.project.json` |
+| `../.vscode/settings.json` |
+| `../api/services/platform_compat.py` |
+| `../api\services\blender_fbx_export.py` |
+| `../web/src/lib/api.ts` |
+| `../web/src/app/layout.tsx` |
+| `../.specstory\statistics.json` |
+| `../.specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md` |
+| `../api/main.py` |
+| `../api\routers\avatars.py` |
+| `../commit.bat` |
+| `../README.md` |
+| `../web/package-lock.json` |
+| `../api/config.py` |
+| `../api/services/job_manager.py` |
+| `../api/services/lhmpp_service.py` |
+| `../api\services\mesh_export_service.py` |
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "3dgs|3DGS|splat|SuperSplat"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "3dgs|3DGS|splat|SuperSplat",
+  "topFiles": [
+    {
+      "matchCount": 87,
+      "uri": ".specstory\\history\\2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "web/src/app/page.tsx"
+    },
+    {
+      "matchCount": 25,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/services/lhmpp_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "web\\src\\app\\page.tsx"
+    },
+    {
+      "matchCount": 87,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 18,
+      "uri": "README.md"
+    }
+  ],
+  "totalFiles": 9,
+  "totalMatches": 224
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The user intends to develop a 3DGS viewer tool within a `3dgs` directory.
+
+A standalone web-based viewer in the `3dgs/` directory should be created, capable of loading `.ply` 3DGS files without heavy dependencies. Options include using @mkkellogg/gaussian-splats-3d, antimatter15/splat, or gsplat.js/spark for lightweight WebGL rendering.
+
+The user wants to create a 3DGS viewer tool in the `3dgs` directory that loads `.ply` files using lightweight WebGL libraries like `@mkkellogg/gaussian-splats-3d`. The viewer will be a standalone web-based tool with an HTML page and JavaScript for rendering, potentially using CDN or bundling the library. A simple `serve.py` or instructions will allow running the viewer locally. The structure includes a `README.md` and a `viewer` subdirectory containing `index.html` and `viewer.js`.
+
+The viewer will support loading 3DGS files either via URL or file drop, using the `gaussian-splats-3d` library. It will be built with minimal dependencies and run in a browser environment.
+
+The user prefers a simple, standalone web-based 3DGS viewer using lightweight WebGL libraries such as `@mkkellogg/gaussian-splats-3d` or `antimatter15/splat`, with minimal dependencies and no heavy frameworks. The viewer will load `.ply` files via URL or file drop, and can be served locally using a basic HTTP server or a simple development setup with CDN imports.
+
+The viewer will be structured in a `3dgs/viewer` subdirectory with an `index.html` and `viewer.js` file, supporting both local file loading and remote URL access. It will use ES modules from CDN or bundled versions for rendering 3DGS data in a browser environment.
+
+The user will use `@mkkellogg/gaussian-splats-3d` for a lightweight 3DGS viewer with minimal dependencies. The viewer will be a standalone web tool in the `3dgs/viewer` directory, supporting `.ply` file loading via URL or file drop, and will render 3DGS data using WebGL with ES modules imported from CDN or bundled versions.</details></think>
+
+_**Agent (default)**_
+
+在 `3dgs/` 下创建一个基于 Web 的 3DGS PLY 查看器，支持本地拖拽与 HRM API 链接加载。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\package.json</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\vite.config.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\style.css</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\main.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\tsconfig.json</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\.gitignore</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd "D:\WorkSpace\mkdevkit\hrm\3dgs" && npm install && npm run build</summary>
+
+```bash
+cd "D:\WorkSpace\mkdevkit\hrm\3dgs" && npm install && npm run build
+```
+
+```
+At C:\Users\renjihe\AppData\Local\Temp\ps-script-af223f3c-296c-4acd-8376-d0f34bcc3930.ps1:7 char:37
++ cd "D:\WorkSpace\mkdevkit\hrm\3dgs" &amp;&amp; npm install &amp;&amp; npm run build
++                                     ~~
+The token '&amp;&amp;' is not a valid statement separator in this version.
+At C:\Users\renjihe\AppData\Local\Temp\ps-script-af223f3c-296c-4acd-8376-d0f34bcc3930.ps1:7 char:52
++ cd "D:\WorkSpace\mkdevkit\hrm\3dgs" &amp;&amp; npm install &amp;&amp; npm run build
++                                                    ~~
+The token '&amp;&amp;' is not a valid statement separator in this version.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : InvalidEndOfLine
+ 
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd "D:\WorkSpace\mkdevkit\hrm\3dgs"; npm install; npm run build</summary>
+
+```bash
+cd "D:\WorkSpace\mkdevkit\hrm\3dgs"; npm install; npm run build
+```
+
+```
+
+added 17 packages, and audited 18 packages in 2m
+
+5 packages are looking for funding
+  run &#96;npm fund&#96; for details
+
+found 0 vulnerabilities
+
+&gt; build
+&gt; vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 6 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.18 kB │ gzip:   0.71 kB
+dist/assets/index-CeLlKL2l.css    1.58 kB │ gzip:   0.76 kB
+dist/assets/index-215Mow7B.js   719.02 kB │ gzip: 185.12 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.26s
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+Build succeeded. Add a brief mention in the main README under a new section or in the existing PLY viewing section.</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SuperSplat"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SuperSplat",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "README.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\web\src\app\page.tsx</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+已在 `3dgs/` 目录创建 **3DGS PLY 浏览器查看器**，本地构建已通过。
+
+## 目录结构
+
+```
+3dgs/
+├── README.md
+├── package.json
+├── vite.config.ts
+├── index.html
+└── src/
+    ├── main.ts      # 加载 / 渲染逻辑
+    └── style.css
+```
+
+## 使用方法
+
+```bash
+cd 3dgs
+npm install
+npm run dev
+```
+
+浏览器打开：**http://localhost:5174**
+
+| 方式 | 说明 |
+|------|------|
+| 拖放 | 把 `avatar.ply` 拖进页面 |
+| 打开文件 | 工具栏「打开 PLY」 |
+| URL 参数 | `?ply=http://localhost:8000/api/v1/avatars/{id}/model` |
+
+从 HRM API 加载时，在 `api/.env` 加上：
+
+```env
+CORS_ORIGINS=http://localhost:3000,http://localhost:5174
+```
+
+## 技术说明
+
+- 基于 [@mkkellogg/gaussian-splats-3d](https://github.com/mkkellogg/GaussianSplats3D)，浏览器端 splat 光栅化
+- 兼容 LHM++ 标准 3DGS PLY（`scale_*`、`opacity`、`f_dc_*` 等）
+- Mock 模式的占位 PLY 无法正常预览
+
+主 `README.md` 和 Web 页面的 PLY 提示已指向该查看器。详细说明见 [`3dgs/README.md`](3dgs/README.md)。
+
+---
+
+_**User**_
+
+加载失败: Viewer::downloadSplatSceneToSplatBuffer -> File format not supported: blob:http://localhost:5174/01c2ce13-0ede-40d9-874d-326cca4256ba
+
+---
+
+_**Agent (default)**_
+
+blob URL 没有 `.ply` 扩展名，库无法识别格式。正在查 gaussian-splats-3d 的本地文件加载 API 并修复。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dgs\\node_modules\\@mkkellogg\\gaussian-splats-3d",
+  "pattern": "addSplatScene|File format not supported|downloadSplatScene"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dgs\\node_modules\\@mkkellogg\\gaussian-splats-3d",
+  "pattern": "addSplatScene|File format not supported|downloadSplatScene",
+  "topFiles": [],
+  "totalFiles": 0,
+  "totalMatches": 0
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\main.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm\3dgs\node_modules\@mkkellogg\gaussian-splats-3d** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: Get-ChildItem "D:\WorkSpace\mkdevkit\hrm\3dgs\node_modules\@mkkellogg\gaussian-splats-3d" | Select-Object -First 20 Name</summary>
+
+```bash
+Get-ChildItem "D:\WorkSpace\mkdevkit\hrm\3dgs\node_modules\@mkkellogg\gaussian-splats-3d" | Select-Object -First 20 Name
+```
+
+```
+
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
 
 </details></tool-use>

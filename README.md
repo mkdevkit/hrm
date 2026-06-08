@@ -25,6 +25,7 @@
   - [摄像头流驱动（WebSocket）](#摄像头流驱动websocket)
   - [任务查询](#任务查询)
 - [输出文件说明](#输出文件说明)
+- [3DGS 查看器](#3dgs-查看器)
 - [蒙皮网格导出与实现原理](#蒙皮网格导出与实现原理)
 - [Mock 模式（无 GPU 联调）](#mock-模式无-gpu-联调)
 - [配置项参考](#配置项参考)
@@ -526,6 +527,28 @@ curl http://localhost:8000/api/v1/jobs/{job_id}
 
 ---
 
+## 3DGS 查看器
+
+HRM 自带浏览器端 3DGS 预览工具（`3dgs/`），用于查看 `avatar.ply`（MeshLab 等普通软件会显示为黑点）。
+
+```bash
+cd 3dgs
+npm install
+npm run dev
+```
+
+打开 **http://localhost:5174**，拖放 PLY，或使用 HRM API 链接：
+
+```
+http://localhost:5174/?ply=http://localhost:8000/api/v1/avatars/{avatar_id}/model
+```
+
+跨域加载时在 `api/.env` 增加：`CORS_ORIGINS=http://localhost:3000,http://localhost:5174`
+
+详见 [`3dgs/README.md`](3dgs/README.md)。
+
+---
+
 ## 蒙皮网格导出与实现原理
 
 LHM++ **官方**仅提供 3D Gaussian Splatting PLY 导出（`scripts/inference/to_gs_ply.py`），**不提供**传统蒙皮网格或 FBX 一键导出。
@@ -570,7 +593,7 @@ Web 勾选「同时导出 SMPL-X 蒙皮网格」或 API 传 `export_skinned_mesh
 
 | 文件 | 用途 |
 |------|------|
-| `avatar.ply` | 3DGS 原始表示；需 SuperSplat 等 splat 查看器预览 |
+| `avatar.ply` | 3DGS 原始表示；用 [`3dgs/` 本地查看器](#3dgs-查看器) 或 SuperSplat 等 splat 工具预览 |
 | `avatar_skinned.fbx` | 带 Armature + 顶点组权重的蒙皮网格，直接进 Unity / Maya |
 | `avatar_skeleton.json` | 55 关节名、父子关系、T-pose 关节位置、稀疏 LBS 权重、betas |
 
@@ -844,17 +867,12 @@ hrm/
 │       ├── mesh_export_service.py # 高斯 PLY → SMPL-X 蒙皮网格（自研后处理）
 │       ├── blender_fbx_export.py # subprocess 调用 Blender 导出 FBX
 │       └── job_manager.py        # 异步任务管理
-└── web/                          # Next.js 前端
-    ├── package.json
-    ├── next.config.js
-    ├── .env.local.example
-    └── src/
-        ├── app/
-        │   ├── page.tsx          # 主工作流页面
-        │   ├── layout.tsx
-        │   └── globals.css
-        └── lib/
-            └── api.ts            # API 客户端
+├── web/                          # Next.js 前端
+│   └── ...
+└── 3dgs/                         # 3DGS PLY 浏览器查看器（Vite + gaussian-splats-3d）
+    ├── index.html
+    ├── src/main.ts
+    └── README.md
 ```
 
 ---
