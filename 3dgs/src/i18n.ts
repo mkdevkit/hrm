@@ -24,8 +24,8 @@ const messages = {
     langSwitchTitle: "切换为英文",
   },
   en: {
-    pageTitle: "HRM 3DGS Viewer",
-    appTitle: "HRM 3DGS Viewer",
+    pageTitle: "3DGS Viewer",
+    appTitle: "3DGS Viewer",
     openPly: "Open PLY",
     loadFromUrl: "Load from URL",
     statusIdle: "Drop a .ply file here, or click Open PLY",
