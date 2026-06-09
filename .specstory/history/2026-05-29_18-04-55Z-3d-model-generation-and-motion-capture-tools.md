@@ -31227,7 +31227,20 @@ _**Agent (default)**_
 
 <details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\main.ts</summary>
 
-Status: **loading**
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\style.css</summary>
 
 </details>
 
@@ -31242,9 +31255,27 @@ _**Agent (default)**_
 
 <tool-use data-tool-type="write" data-tool-name="edit_file_v2">
 
-<details><summary>Tool use: **edit_file_v2**</summary>
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\style.css</summary>
 
-Status: **loading**
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+从 main.ts 中移除了未使用的 applyLocaleToDocument 导入。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\index.html</summary>
 
 </details>
 
@@ -31259,9 +31290,7 @@ _**Agent (default)**_
 
 <tool-use data-tool-type="write" data-tool-name="edit_file_v2">
 
-<details><summary>Tool use: **edit_file_v2**</summary>
-
-Status: **loading**
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\main.ts</summary>
 
 </details>
 
@@ -31276,43 +31305,7 @@ _**Agent (default)**_
 
 <tool-use data-tool-type="write" data-tool-name="edit_file_v2">
 
-<details><summary>Tool use: **edit_file_v2**</summary>
-
-Status: **loading**
-
-</details>
-
-</tool-use>
-
-<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
-<summary>Tool use: **edit_file_v2**</summary>
-
-</details></tool-use>
-
-_**Agent (default)**_
-
-<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
-
-<details><summary>Tool use: **edit_file_v2**</summary>
-
-Status: **loading**
-
-</details>
-
-</tool-use>
-
-<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
-<summary>Tool use: **edit_file_v2**</summary>
-
-</details></tool-use>
-
-_**Agent (default)**_
-
-<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
-
-<details><summary>Tool use: **edit_file_v2**</summary>
-
-Status: **loading**
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\README.md</summary>
 
 </details>
 
@@ -31330,6 +31323,156 @@ _**Agent (default)**_
 
 ```bash
 cd "D:\WorkSpace\mkdevkit\hrm\3dgs"; npm run build
+```
+
+```
+
+&gt; build
+&gt; vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 7 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.32 kB │ gzip:   0.67 kB
+dist/assets/index-Ddj2Ur3f.css    1.72 kB │ gzip:   0.79 kB
+dist/assets/index-B1HZNjGL.js   721.99 kB │ gzip: 186.43 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.28s
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+考虑了手动切换语言的场景。用户选择后会持久化到 localStorage，下次访问时优先使用该设置而非系统语言。</details></think>
+
+_**Agent (default)**_
+
+已为 3DGS 查看器加上中英双语支持。
+
+## 行为说明
+
+| 规则 | 说明 |
+|------|------|
+| **默认语言** | 系统语言为 `zh*` → 中文；其余（含 `en`、日语等）→ **英文** |
+| **切换按钮** | 工具栏右上角，中文界面显示 **EN**，英文界面显示 **中文** |
+| **记忆** | 手动切换后写入 `localStorage`，下次打开沿用该选择 |
+
+## 新增/修改文件
+
+- `3dgs/src/i18n.ts` — 文案与语言逻辑
+- `3dgs/index.html` — 可翻译 UI 元素 + 语言按钮
+- `3dgs/src/main.ts` — 状态提示走 i18n
+- `3dgs/src/style.css` — 右上角按钮样式、拖放提示 CSS 变量
+
+刷新后执行 `npm run dev` 即可验证。若要恢复跟随系统语言，清除浏览器里 `hrm-3dgs-viewer-locale` 即可。
+
+---
+
+_**User**_
+
+3dgs打包后引用assets不要用/assets而要用./assets
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+3DGS 打包后的资源引用路径需要从 `/assets/` 改为 `./assets/`。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dgs\vite.config.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dgs\dist\index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dgs\vite.config.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd "D:\WorkSpace\mkdevkit\hrm\3dgs"; npm run build; Get-Content dist\index.html | Select-Object -First 10</summary>
+
+```bash
+cd "D:\WorkSpace\mkdevkit\hrm\3dgs"; npm run build; Get-Content dist\index.html | Select-Object -First 10
+```
+
+```
+
+&gt; build
+&gt; vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 7 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.31 kB │ gzip:   0.66 kB
+dist/assets/index-Ddj2Ur3f.css    1.72 kB │ gzip:   0.79 kB
+dist/assets/index-DmzKNjLK.js   721.99 kB │ gzip: 186.43 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.23s
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+  &lt;head&gt;
+    &lt;meta charset="UTF-8" /&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0" /&gt;
+    &lt;title&gt;3DGS Viewer&lt;/title&gt;
+    &lt;script type="module" crossorigin src="./assets/index-DmzKNjLK.js"&gt;&lt;/script&gt;
+    &lt;link rel="stylesheet" crossorigin href="./assets/index-Ddj2Ur3f.css"&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+
 ```
 </details>
 </tool-use>
