@@ -294,7 +294,7 @@ export default function HomePage() {
                 </div>
               )}
               <p className="hint" style={{ marginTop: "0.75rem" }}>
-                PLY 请用 <a href="http://localhost:5174" target="_blank" rel="noreferrer">3DGS 查看器</a>（<code>cd 3dgs && npm run dev</code>）预览；FBX 可直接导入 Unity / Maya。
+                PLY 请用 <a href="https://gokit.cc/zh/tools/3dgs" target="_blank" rel="noreferrer">3DGS 查看器</a>预览；FBX 可直接导入 Unity / Maya。
                 {hasSkinnedMesh && !hasFbx && " FBX 未生成，请确认 API 服务器已安装 Blender。"}
               </p>
             </div>
