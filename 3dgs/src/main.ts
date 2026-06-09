@@ -115,7 +115,7 @@ async function loadFromFile(file: File) {
 }
 
 function promptUrl() {
-  const input = window.prompt(t("promptUrlTitle"), t("promptUrlDefault"));
+  const input = window.prompt(t("promptUrlTitle"));
   if (input?.trim()) {
     void loadFromUrl(input.trim());
   }

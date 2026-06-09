@@ -1,4 +1,4 @@
-# HRM 3DGS 查看器
+# 3DGS 查看器
 
 本地 Web 工具，用于预览 LHM++ / HRM 导出的 **3D Gaussian Splatting** `.ply` 文件（普通 MeshLab 会显示为黑点，需 splat 渲染器）。
 

@@ -4,8 +4,8 @@ const STORAGE_KEY = "hrm-3dgs-viewer-locale";
 
 const messages = {
   zh: {
-    pageTitle: "HRM 3DGS 查看器",
-    appTitle: "HRM 3DGS 查看器",
+    pageTitle: "3DGS 查看器",
+    appTitle: "3DGS 查看器",
     openPly: "打开 PLY",
     loadFromUrl: "从 URL 加载",
     statusIdle: "拖放 .ply 到窗口，或点击「打开 PLY」",
@@ -14,10 +14,8 @@ const messages = {
     statusFailed: "加载失败: {msg}",
     statusDropInvalid: "请拖放 .ply 或 .splat 文件",
     promptUrlTitle: "输入 PLY 文件 URL",
-    promptUrlDefault: "http://localhost:8000/api/v1/avatars/{avatar_id}/model",
     helpTitle: "用法",
-    helpDrop: "拖放 LHM++ / HRM 导出的 avatar.ply",
-    helpUrlParam: "URL 参数：?ply=文件地址",
+    helpDrop: "拖放.ply文件",
     helpControls: "鼠标左键旋转 · 右键平移 · 滚轮缩放",
     dragHint: "释放以加载 PLY",
     langSwitch: "EN",
@@ -34,10 +32,8 @@ const messages = {
     statusFailed: "Load failed: {msg}",
     statusDropInvalid: "Please drop a .ply or .splat file",
     promptUrlTitle: "Enter PLY file URL",
-    promptUrlDefault: "http://localhost:8000/api/v1/avatars/{avatar_id}/model",
     helpTitle: "Usage",
-    helpDrop: "Drop avatar.ply exported from LHM++ / HRM",
-    helpUrlParam: "URL param: ?ply=file_url",
+    helpDrop: "Drop .ply file",
     helpControls: "Left drag: rotate · Right drag: pan · Wheel: zoom",
     dragHint: "Release to load PLY",
     langSwitch: "中文",
@@ -94,7 +90,6 @@ export function applyLocaleToDocument(): void {
     "btn-load-url": "loadFromUrl",
     "help-title": "helpTitle",
     "help-drop": "helpDrop",
-    "help-url": "helpUrlParam",
     "help-controls": "helpControls",
   };
 
