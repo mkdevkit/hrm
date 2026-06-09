@@ -1,4 +1,4 @@
-# HRM — LHM++ 人体 3D 重建与动作驱动
+# HRM — 人体 3D 重建与动作驱动
 
 基于 [LHM++](https://lingtengqiu.github.io/LHM++/) 的全栈工具：用一组人物图片生成可动画 3D 模型，再通过动作视频或摄像头视频流驱动角色。
 
@@ -60,20 +60,20 @@ api/data/
 ## 功能一览
 
 
-| 功能        | API                                                 | 说明                                     |
-| --------- | --------------------------------------------------- | -------------------------------------- |
-| 健康检查      | `GET /api/v1/health`                                | 服务状态、LHM++ 可用性、是否 Mock 模式              |
-| 多图 3D 重建  | `POST /api/v1/avatars`                              | 上传 1–8 张全身人物图，导出 Gaussian Splat `.ply` |
+| 功能        | API                                                 | 说明                                          |
+| --------- | --------------------------------------------------- | ------------------------------------------- |
+| 健康检查      | `GET /api/v1/health`                                | 服务状态、LHM++ 可用性、是否 Mock 模式                   |
+| 多图 3D 重建  | `POST /api/v1/avatars`                              | 上传 1–8 张全身人物图，导出 Gaussian Splat `.ply`      |
 | 蒙皮网格导出    | `POST /api/v1/avatars` + `export_skinned_mesh=true` | 同时导出 SMPL-X 蒙皮 **FBX** + 骨骼 JSON（需 Blender） |
-| 查询 Avatar | `GET /api/v1/avatars/{id}`                          | 获取元数据与生成结果路径                           |
-| 下载高斯模型    | `GET /api/v1/avatars/{id}/model`                    | 下载 `.ply`                              |
-| 下载蒙皮 FBX  | `GET /api/v1/avatars/{id}/mesh?format=fbx`          | 带 Armature 的蒙皮 FBX（Unity/Maya）          |
-| 下载骨骼      | `GET /api/v1/avatars/{id}/skeleton`                 | SMPL-X 55 关节 + LBS 权重 JSON             |
-| 预览图       | `GET /api/v1/avatars/{id}/preview`                  | 参考图预览                                  |
-| 动作视频驱动    | `POST /api/v1/avatars/{id}/animate`                 | 上传动作视频，渲染动画 MP4                        |
-| 摄像头流驱动    | `WS /api/v1/avatars/{id}/motion-stream`             | 实时发送 JPEG 帧，批量推理动画                     |
-| 任务查询      | `GET /api/v1/jobs/{id}`                             | 轮询重建/动画进度                              |
-| 下载动画视频    | `GET /api/v1/jobs/{id}/video`                       | 下载渲染结果 MP4                             |
+| 查询 Avatar | `GET /api/v1/avatars/{id}`                          | 获取元数据与生成结果路径                                |
+| 下载高斯模型    | `GET /api/v1/avatars/{id}/model`                    | 下载 `.ply`                                   |
+| 下载蒙皮 FBX  | `GET /api/v1/avatars/{id}/mesh?format=fbx`          | 带 Armature 的蒙皮 FBX（Unity/Maya）              |
+| 下载骨骼      | `GET /api/v1/avatars/{id}/skeleton`                 | SMPL-X 55 关节 + LBS 权重 JSON                  |
+| 预览图       | `GET /api/v1/avatars/{id}/preview`                  | 参考图预览                                       |
+| 动作视频驱动    | `POST /api/v1/avatars/{id}/animate`                 | 上传动作视频，渲染动画 MP4                             |
+| 摄像头流驱动    | `WS /api/v1/avatars/{id}/motion-stream`             | 实时发送 JPEG 帧，批量推理动画                          |
+| 任务查询      | `GET /api/v1/jobs/{id}`                             | 轮询重建/动画进度                                   |
+| 下载动画视频    | `GET /api/v1/jobs/{id}/video`                       | 下载渲染结果 MP4                                  |
 
 
 ---
@@ -537,7 +537,7 @@ npm install
 npm run dev
 ```
 
-打开 **http://localhost:5174**，拖放 PLY，或使用 HRM API 链接：
+打开 **[http://localhost:5174](http://localhost:5174)**，拖放 PLY，或使用 HRM API 链接：
 
 ```
 http://localhost:5174/?ply=http://localhost:8000/api/v1/avatars/{avatar_id}/model
@@ -545,7 +545,7 @@ http://localhost:5174/?ply=http://localhost:8000/api/v1/avatars/{avatar_id}/mode
 
 跨域加载时在 `api/.env` 增加：`CORS_ORIGINS=http://localhost:3000,http://localhost:5174`
 
-详见 [`3dgs/README.md`](3dgs/README.md)。
+详见 `[3dgs/README.md](3dgs/README.md)`。
 
 ---
 
@@ -589,21 +589,27 @@ flowchart LR
   BL --> FBX
 ```
 
+
+
 Web 勾选「同时导出 SMPL-X 蒙皮网格」或 API 传 `export_skinned_mesh=true` 时，最终对用户可见的下载项为：
 
-| 文件 | 用途 |
-|------|------|
-| `avatar.ply` | 3DGS 原始表示；用 [`3dgs/` 本地查看器](#3dgs-查看器) 或 SuperSplat 等 splat 工具预览 |
-| `avatar_skinned.fbx` | 带 Armature + 顶点组权重的蒙皮网格，直接进 Unity / Maya |
-| `avatar_skeleton.json` | 55 关节名、父子关系、T-pose 关节位置、稀疏 LBS 权重、betas |
+
+| 文件                     | 用途                                                               |
+| ---------------------- | ---------------------------------------------------------------- |
+| `avatar.ply`           | 3DGS 原始表示；用 `[3dgs/` 本地查看器](#3dgs-查看器) 或 SuperSplat 等 splat 工具预览 |
+| `avatar_skinned.fbx`   | 带 Armature + 顶点组权重的蒙皮网格，直接进 Unity / Maya                         |
+| `avatar_skeleton.json` | 55 关节名、父子关系、T-pose 关节位置、稀疏 LBS 权重、betas                          |
+
 
 ### LHM++ 官方 vs HRM 自研
 
-| 输出 | 来源 | 说明 |
-|------|------|------|
-| Gaussian PLY | LHM++ `to_gs_ply.py` | 官方 3DGS；颜色存在每个高斯的 SH 系数中，**不是 UV 贴图** |
-| 蒙皮 FBX | HRM `mesh_export_service.py` + Blender | 自研后处理 + headless 导出，非官方能力 |
-| 骨骼 JSON / NPZ | HRM `mesh_export_service.py` | 完整蒙皮元数据；FBX 已含绑定，JSON 供脚本或调试 |
+
+| 输出            | 来源                                     | 说明                                    |
+| ------------- | -------------------------------------- | ------------------------------------- |
+| Gaussian PLY  | LHM++ `to_gs_ply.py`                   | 官方 3DGS；颜色存在每个高斯的 SH 系数中，**不是 UV 贴图** |
+| 蒙皮 FBX        | HRM `mesh_export_service.py` + Blender | 自研后处理 + headless 导出，非官方能力             |
+| 骨骼 JSON / NPZ | HRM `mesh_export_service.py`           | 完整蒙皮元数据；FBX 已含绑定，JSON 供脚本或调试          |
+
 
 ### 原理一：3DGS → SMPL-X 形体（位移场映射）
 
@@ -613,13 +619,13 @@ HRM 后处理步骤：
 
 1. **读取高斯中心** — 用 `plyfile` 从 `avatar.ply` 解析所有 $(x,y,z)$。
 2. **加载锚点** — 按高斯数量匹配 `{cano}_{pts}.ply`；点数必须与高斯数 **1:1 对齐**（索引 $i$ 的高斯对应索引 $i$ 的锚点）。
-3. **计算位移场** — $\mathbf{d}_i = \mathbf{x}_i - \mathbf{a}_i$，并对 $\|\mathbf{d}_i\|$ 做上限裁剪（默认 `max_disp=0.12`），避免异常高斯拉飞网格。
+3. **计算位移场** — $\mathbf{d}_i = \mathbf{x}_i - \mathbf{a}_i$，并对 $\mathbf{d}_i$ 做上限裁剪（默认 `max_disp=0.12`），避免异常高斯拉飞网格。
 4. **加载 SMPL-X 模板** — 通过 LHM++ `SMPL_Layer.forward_local(T-pose)` 得到：
-   - 网格顶点 $\mathbf{v}_j$、三角面片
-   - 55 关节 LBS 权重矩阵 $W_{j,k}$
-   - T-pose 关节位置（写入 `joint_rest_positions`）
+  - 网格顶点 $\mathbf{v}_j$、三角面片
+  - 55 关节 LBS 权重矩阵 $W_{j,k}$
+  - T-pose 关节位置（写入 `joint_rest_positions`）
 5. **插值到网格顶点** — 对每个网格顶点 $\mathbf{v}_j$，在锚点集上建 `scipy.cKDTree`，取 $k$ 近邻（默认 8）的位移 $\mathbf{d}_i$，按距离反比加权：
-   $$\mathbf{v}'_j = \mathbf{v}_j + \alpha \sum_i w_{ji}\,\mathbf{d}_i$$
+  $$\mathbf{v}'_j = \mathbf{v}*j + \alpha \sum_i w*{ji}\mathbf{d}_i$$
    其中 $\alpha$ 为 `blend_strength`（默认 0.85）。
 
 **结果**：保留 SMPL-X 拓扑与 LBS 权重（可绑骨、可动画），形体接近 3DGS 重建；**不含纹理**。
@@ -699,11 +705,15 @@ flowchart TB
   TEX --> OUT
 ```
 
-| 烘焙方式 | 原理 | 质量 | HRM 现状 |
-|----------|------|------|----------|
-| **多视角神经渲染 + UV Bake** | 用 LHM++ `render_backend=neural` 在 T-pose 或固定 orbit 下渲染 N 个视角；将像素反投影/烘到 SMPL-X UV（Blender Bake 或 nvdiffrast） | 最好，侧面背面较准 | **未实现**；可在 Blender 中手工完成 |
-| **参考图投影** | 将上传的第一张参考图按正面相机 Project 到 SMPL UV | 快，仅正面较准 | **未实现** |
-| **SuGaR / 3DGS-to-PC 等** | 从 3DGS 抽独立三角网格再 unwrap + bake | 网格与 SMPL 骨架 **脱节**，需重新绑骨 | 不适用于 HRM 绑骨主线 |
+
+
+
+| 烘焙方式                     | 原理                                                                                                          | 质量                       | HRM 现状                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------ |
+| **多视角神经渲染 + UV Bake**    | 用 LHM++ `render_backend=neural` 在 T-pose 或固定 orbit 下渲染 N 个视角；将像素反投影/烘到 SMPL-X UV（Blender Bake 或 nvdiffrast） | 最好，侧面背面较准                | **未实现**；可在 Blender 中手工完成 |
+| **参考图投影**                | 将上传的第一张参考图按正面相机 Project 到 SMPL UV                                                                           | 快，仅正面较准                  | **未实现**                  |
+| **SuGaR / 3DGS-to-PC 等** | 从 3DGS 抽独立三角网格再 unwrap + bake                                                                               | 网格与 SMPL 骨架 **脱节**，需重新绑骨 | 不适用于 HRM 绑骨主线            |
+
 
 **为何 HRM 不直接用 SuGaR 出纹理 OBJ**：SuGaR 解决的是「场景/物体重网格化」，输出网格与 SMPL-X LBS 权重无关；HRM 的目标是 **保 SMPL 55 关节绑骨进 Unity/Maya**，几何必须基于 SMPL-X 拓扑 + 高斯位移，纹理需单独 bake。
 
@@ -711,13 +721,15 @@ flowchart TB
 
 ### 自研模块与依赖
 
-| 用途 | 模块 / 库 |
-|------|-----------|
-| 高斯 PLY 解析 | `plyfile` |
-| 锚点对齐、位移插值 | `scipy.cKDTree` |
-| SMPL-X 网格 / 权重 / 关节 | LHM++ `SMPL_Layer`（PyTorch） |
-| 中间 OBJ + 骨骼 JSON + NPZ | `mesh_export_service.py` |
-| Blender subprocess | `blender_fbx_export.py` + `scripts/blender_export_fbx.py` |
+
+| 用途                     | 模块 / 库                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| 高斯 PLY 解析              | `plyfile`                                                 |
+| 锚点对齐、位移插值              | `scipy.cKDTree`                                           |
+| SMPL-X 网格 / 权重 / 关节    | LHM++ `SMPL_Layer`（PyTorch）                               |
+| 中间 OBJ + 骨骼 JSON + NPZ | `mesh_export_service.py`                                  |
+| Blender subprocess     | `blender_fbx_export.py` + `scripts/blender_export_fbx.py` |
+
 
 Python 依赖见 `api/requirements.txt`：`plyfile`、`scipy`。Blender 为**系统级依赖**，不在 pip 中。
 
@@ -755,20 +767,20 @@ MOCK_MODE=true
 ### API（`api/.env`）
 
 
-| 变量                       | 默认                        | 说明                                       |
-| ------------------------ | ------------------------- | ---------------------------------------- |
-| `LHM_ROOT`               | 空                         | LHM-plusplus 仓库绝对路径                      |
-| `MODEL_NAME`             | `LHMPP-700M-PixelShuffle` | 模型名                                      |
-| `MODEL_PATH`             | 空                         | 本地权重路径（可选）                               |
-| `MOCK_MODE`              | `false`                   | 是否 Mock 模式                               |
-| `INFER_LOW_MEMORY`       | `false`                   | 低显存测试模式（见下表）                             |
-| `INFER_MAX_IMAGE_SIZE`   | `0`（自动）                   | 参考图最大高度（px），如 `672`                      |
-| `INFER_REF_VIEW_MAX`     | `0`（自动）                   | 参考视角上限，如 `2`                             |
-| `INFER_ANIM_BATCH_SIZE`  | `0`（自动）                   | 动作驱动每批帧数，如 `4`                           |
-| `INFER_DENSE_SAMPLE_PTS` | `0`（自动）                   | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时） |
+| 变量                       | 默认                        | 说明                                                     |
+| ------------------------ | ------------------------- | ------------------------------------------------------ |
+| `LHM_ROOT`               | 空                         | LHM-plusplus 仓库绝对路径                                    |
+| `MODEL_NAME`             | `LHMPP-700M-PixelShuffle` | 模型名                                                    |
+| `MODEL_PATH`             | 空                         | 本地权重路径（可选）                                             |
+| `MOCK_MODE`              | `false`                   | 是否 Mock 模式                                             |
+| `INFER_LOW_MEMORY`       | `false`                   | 低显存测试模式（见下表）                                           |
+| `INFER_MAX_IMAGE_SIZE`   | `0`（自动）                   | 参考图最大高度（px），如 `672`                                    |
+| `INFER_REF_VIEW_MAX`     | `0`（自动）                   | 参考视角上限，如 `2`                                           |
+| `INFER_ANIM_BATCH_SIZE`  | `0`（自动）                   | 动作驱动每批帧数，如 `4`                                         |
+| `INFER_DENSE_SAMPLE_PTS` | `0`（自动）                   | 体素/query 采样点，如 `40000`（低显存 spconv OOM 时）               |
 | `BLENDER_EXECUTABLE`     | 空（自动查找 PATH）              | Blender 可执行文件路径，蒙皮 FBX 导出必需（Linux: `/usr/bin/blender`） |
-| `CORS_ORIGINS`           | `http://localhost:3000`   | 允许的前端源，逗号分隔                              |
-| `API_PORT`               | `8000`                    | 监听端口                                     |
+| `CORS_ORIGINS`           | `http://localhost:3000`   | 允许的前端源，逗号分隔                                            |
+| `API_PORT`               | `8000`                    | 监听端口                                                   |
 
 
 代码内固定参数（`api/config.py`）：
@@ -940,7 +952,7 @@ A: 旧版本在 LHM++ 推理时会 `chdir` 导致 job 文件写到错误目录�
 **Q: Windows 上能否跑通 LHM++ 全链路？**  
 A: 官方仅支持 Linux。Windows 可跑 HRM 前端 + Mock 模式；真实推理即使过了 `fcntl`，仍可能卡在 `pointops`、`gsplat` 等 CUDA 扩展编译。推荐 WSL2 Ubuntu 或 Linux GPU 服务器。
 
-Q: No module named 'pointops_cuda'
+**Q: No module named 'pointops_cuda'**
 
 A: 1) pip install ninja cython setuptools -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
@@ -950,7 +962,7 @@ A: 1) pip install ninja cython setuptools -i [https://pypi.tuna.tsinghua.edu.cn/
 
 python [setup.py](http://setup.py) install --user
 
-如果还有权限不足，临时重载 D 盘挂载
+WSL环境如果还有权限不足，临时重载 D 盘挂载
 
 卸载原有D盘挂载
 
@@ -964,7 +976,7 @@ sudo mount -t drvfs D: /mnt/d -o metadata,uid=1000,gid=1000,umask=000,fmask=000,
 
 pip install . --no-build-isolation --user
 
-Q: No module named 'diff_gaussian_rasterization'
+**Q: No module named 'diff_gaussian_rasterization'**
 
 A: 这是 3D Gaussian Splatting 专用的 CUDA 算子，没有 pip 包，必须手动编译
 
@@ -984,7 +996,7 @@ cd diff-gaussian-rasterization
 
 pip install . --no-build-isolation
 
-Q: No module named 'spconv'
+**Q: No module named 'spconv'**
 
 A:1)清理旧残留
 
@@ -1000,11 +1012,11 @@ pip install cumm-cu121==0.7.11 -i [https://pypi.tuna.tsinghua.edu.cn/simple](htt
 
 pip install spconv-cu121==2.3.8 -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
-Q: No module named 'torch_scatter'
+**Q: No module named 'torch_scatter'**
 
 A: pip install torch_scatter -f [https://data.pyg.org/whl/torch-2.3.0+cu121.html](https://data.pyg.org/whl/torch-2.3.0+cu121.html) --no-build-isolation -i [https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)
 
-Q: TypeError: argument of type 'bool' is not iterable 和 ValueError: set share=True
+**Q: TypeError: argument of type 'bool' is not iterable 和 ValueError: set share=True**
 
 这个 `TypeError: argument of type 'bool' is not iterable` 的崩溃是由 **Gradio 内部的 API 架构解析器** 与环境中的 **Pydantic** 版本不兼容导致的。
 

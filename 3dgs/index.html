@@ -1,29 +1,30 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HRM 3DGS 查看器</title>
+    <title>HRM 3DGS Viewer</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app">
       <header class="toolbar">
-        <h1>HRM 3DGS Viewer</h1>
+        <h1 id="app-title">HRM 3DGS Viewer</h1>
         <label class="btn">
-          打开 PLY
+          <span id="btn-open-ply-label">Open PLY</span>
           <input id="file-input" type="file" accept=".ply,.splat" hidden />
         </label>
-        <button id="btn-load-url" type="button" class="btn secondary">从 URL 加载</button>
-        <span id="status" class="status">拖放 .ply 到窗口，或点击「打开 PLY」</span>
+        <button id="btn-load-url" type="button" class="btn secondary">Load from URL</button>
+        <span id="status" class="status"></span>
+        <button id="btn-lang" type="button" class="btn lang-toggle" title="Switch language">中文</button>
       </header>
       <div id="canvas-host"></div>
       <aside id="help" class="help">
-        <p><strong>用法</strong></p>
+        <p><strong id="help-title">Usage</strong></p>
         <ul>
-          <li>拖放 LHM++ / HRM 导出的 <code>avatar.ply</code></li>
-          <li>URL 参数：<code>?ply=文件地址</code></li>
-          <li>鼠标左键旋转 · 右键平移 · 滚轮缩放</li>
+          <li id="help-drop">Drop avatar.ply exported from LHM++ / HRM</li>
+          <li id="help-url">URL param: ?ply=file_url</li>
+          <li id="help-controls">Left drag: rotate · Right drag: pan · Wheel: zoom</li>
         </ul>
       </aside>
     </div>

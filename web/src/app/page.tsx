@@ -179,14 +179,9 @@ export default function HomePage() {
   return (
     <main className="container">
       <header className="hero">
-        <h1>LHM++ 人体 3D 重建与动作驱动</h1>
+        <h1>人体 3D 重建与动作驱动</h1>
         <p>
           上传多视角人物图片生成可动画 3D 模型，再通过动作视频或摄像头实时捕获驱动角色。
-          基于{" "}
-          <a href="https://lingtengqiu.github.io/LHM++/" target="_blank" rel="noreferrer">
-            LHM++
-          </a>
-          。
         </p>
         {mockMode && (
           <p className="hint" style={{ color: "#fbbf24" }}>

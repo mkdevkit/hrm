@@ -1,4 +1,5 @@
 import * as GaussianSplats3D from "@mkkellogg/gaussian-splats-3d";
+import { initI18n, t } from "./i18n";
 
 const host = document.getElementById("canvas-host")!;
 const statusEl = document.getElementById("status")!;
@@ -7,6 +8,8 @@ const btnLoadUrl = document.getElementById("btn-load-url")!;
 
 let viewer: GaussianSplats3D.Viewer | null = null;
 let loading = false;
+let lastStatusKey: "idle" | "custom" = "idle";
+let lastCustomStatus = "";
 
 const DEFAULT_SCENE_OPTIONS = {
   splatAlphaRemovalThreshold: 1,
@@ -17,8 +20,23 @@ const DEFAULT_SCENE_OPTIONS = {
   progressiveLoad: true,
 };
 
-function setStatus(text: string) {
+function setStatusIdle() {
+  lastStatusKey = "idle";
+  statusEl.textContent = t("statusIdle");
+}
+
+function setStatusCustom(text: string) {
+  lastStatusKey = "custom";
+  lastCustomStatus = text;
   statusEl.textContent = text;
+}
+
+function refreshStatusOnLocaleChange() {
+  if (lastStatusKey === "idle") {
+    setStatusIdle();
+  } else {
+    statusEl.textContent = lastCustomStatus;
+  }
 }
 
 function resolveSceneFormat(source: string, fileName?: string): number {
@@ -65,7 +83,8 @@ async function createViewer() {
 async function loadFromUrl(url: string, label?: string, fileName?: string) {
   if (loading) return;
   loading = true;
-  setStatus(`加载中: ${label ?? url}`);
+  const displayName = label ?? url;
+  setStatusCustom(t("statusLoading", { name: displayName }));
 
   try {
     const v = await createViewer();
@@ -75,11 +94,11 @@ async function loadFromUrl(url: string, label?: string, fileName?: string) {
       format,
     });
     v.start();
-    setStatus(`已加载: ${label ?? url}`);
+    setStatusCustom(t("statusLoaded", { name: displayName }));
   } catch (err) {
     await disposeViewer();
     const msg = err instanceof Error ? err.message : String(err);
-    setStatus(`加载失败: ${msg}`);
+    setStatusCustom(t("statusFailed", { msg }));
     console.error(err);
   } finally {
     loading = false;
@@ -96,9 +115,7 @@ async function loadFromFile(file: File) {
 }
 
 function promptUrl() {
-  const example =
-    "http://localhost:8000/api/v1/avatars/{avatar_id}/model";
-  const input = window.prompt("输入 PLY 文件 URL", example);
+  const input = window.prompt(t("promptUrlTitle"), t("promptUrlDefault"));
   if (input?.trim()) {
     void loadFromUrl(input.trim());
   }
@@ -111,6 +128,9 @@ function loadFromQuery() {
     void loadFromUrl(ply);
   }
 }
+
+initI18n(refreshStatusOnLocaleChange);
+setStatusIdle();
 
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
@@ -138,7 +158,7 @@ window.addEventListener("drop", (e) => {
   if (file && (file.name.endsWith(".ply") || file.name.endsWith(".splat"))) {
     void loadFromFile(file);
   } else {
-    setStatus("请拖放 .ply 或 .splat 文件");
+    setStatusCustom(t("statusDropInvalid"));
   }
 });
 

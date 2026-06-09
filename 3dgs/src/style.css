@@ -64,7 +64,16 @@ body,
   font-size: 0.8rem;
   color: #9aa3b5;
   flex: 1;
-  min-width: 200px;
+  min-width: 120px;
+}
+
+.lang-toggle {
+  margin-left: auto;
+  min-width: 3rem;
+  justify-content: center;
+  background: #252b38;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 #canvas-host {
@@ -108,7 +117,7 @@ body,
 }
 
 body.drag-over #canvas-host::after {
-  content: "释放以加载 PLY";
+  content: var(--i18n-drag-hint, "Release to load PLY");
   position: absolute;
   inset: 0;
   display: flex;
