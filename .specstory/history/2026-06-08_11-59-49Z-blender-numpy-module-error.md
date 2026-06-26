@@ -15015,3 +15015,1073 @@ python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.p
 <summary>Tool use: **run_terminal_command_v2**</summary>
 
 </details></tool-use>
+
+_**Agent (default)**_
+
+**原因**：Blender 4.0.2 的 FBX 导出只支持 `mesh_smooth_type` 为 `OFF` / `FACE` / `EDGE`，不支持较新版本里的 `Normals`；细分在 Armature 修改器之后应用，也会触发 modifier 顺序警告。
+
+**已修复**（`blender_export_fbx.py`）：
+1. `mesh_smooth_type` 改为 **`EDGE`**（配合脚本里的平滑着色，导出平滑法线）
+2. 流程调整为：**绑顶点组 → 细分 → 建骨骼 → 挂 Armature**，避免 modifier 顺序问题
+
+请同步脚本到服务器后**直接重试 FBX 导出**（不必重新跑 3D 重建，若 `avatar_diffuse.png` 已存在即可）。
+
+成功时应看到：
+```
+[HRM] 细分曲面 Level 1 已应用
+[HRM] 已绑定 diffuse 贴图: avatar_diffuse.png
+[HRM] FBX exported: ...
+```
+
+---
+
+_**User**_
+
+"GET /api/v1/jobs/32aa5bec-b080-40f3-ae5c-7ea353b6e32b HTTP/1.1" 200 OK
+2026-06-27 00:25:10,144 WARNING [services.mesh_export_service] 3DGS UV 贴图烘焙失败，FBX 将无贴图: 未找
+到 SMPL-X UV。请确认 LHM_ROOT/pretrained_models/human_model_files 含 smplx UV OBJ
+2026-06-27 00:25:10,573 INFO [services.mesh_export_service] 已补全 skeleton.json 的 joint_rest_position
+s（55 关节，来源 OBJ+LBS 权重）
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+SMPL-X UV 文件缺失导致 FBX 烘焙失败。</details></think>
+
+_**Agent (default)**_
+
+SMPL-X UV 未找到导致贴图烘焙失败。正在排查 LHM++ 中 UV 的存放位置并增强加载逻辑。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "vtx_uv|verts_uv|texcoord|smplx.*uv|uv.*smplx"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "vtx_uv|verts_uv|texcoord|smplx.*uv|uv.*smplx",
+  "topFiles": [
+    {
+      "matchCount": 2,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 6,
+      "uri": ".specstory/history/2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    },
+    {
+      "matchCount": 6,
+      "uri": ".specstory\\history\\2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 7,
+      "uri": "api\\services\\texture_bake_service.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 8,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    }
+  ],
+  "totalFiles": 7,
+  "totalMatches": 33
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\.specstory",
+  "pattern": "vtx_uv|texcoord|human_model_files"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\.specstory",
+  "pattern": "vtx_uv|texcoord|human_model_files",
+  "topFiles": [
+    {
+      "matchCount": 27,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    },
+    {
+      "matchCount": 11,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 2,
+      "uri": ".specstory\\history\\2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 74
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+需要大幅增强 UV 加载逻辑。
+
+正在扩展 UV 属性的搜索回退策略，尝试多种可能的字段名和文件路径来定位 SMPL-X UV 数据。
+
+正在细化 UV 加载的回退方案：
+
+- 解析 OBJ 时放宽匹配条件：即使顶点数与 UV 数量不一致，只要面片格式为 `f v1 v2 v3` 即可提取 UV。
+- 增加从 `.pkl` 或 `.npz` 文件中加载 UV 的支持。
+- 若环境已安装 smplx 库，尝试通过该库读取 UV 数据。
+- 考虑在 HRM 仓库中内置一份最小化的 SMPL-X UV 模板，作为最终兜底方案。
+
+决定将标准 SMPL-X UV 作为静态资源打包进 HRM 仓库的 api/assets/ 目录。由于 SMPL-X 拓扑固定，UV 顶点数与面片数均可预知，这能确保 LHM 未自带 UV 时仍能可靠烘焙 FBX 贴图。
+
+发现 SMPL-X 官方提供 `smplx/smplx_uv.obj`，但因需授权无法自动下载。改为改用 trimesh 提取 OBJ 中的视觉 UV，并实现 `parse_obj_full`：按 `v/vt` 索引解析，若顶点与 UV 不一一对应则按面片平均 UV 值。
+
+补充了两种快速可用的 UV 兜底方案。
+
+- 从网格顶点位置生成球面或柱状 UV 映射，用于烘焙颜色。
+- 在 Blender 无头模式下执行智能 UV 投影，替代缺失的 UV 数据。</details></think>
+
+_**Agent (default)**_
+
+增强 UV 加载：扩展 LHM 资源搜索，并加入柱面 UV 回退，确保贴图烘焙能完成。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm\api\assets** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将重写 `load_smplx_uv` 函数，增加全面的回退机制，并在配置中新增 `smplx_uv_obj` 字段。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+发现 bake_diffuse 存在重复调用 load_smplx_uv 的问题：该函数在 mesh_export 中已调用一次，又在 bake_diffuse_from_gaussian_ply 内部被再次调用。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**原因**：LHM++ 的 `human_model_files` 里通常**没有** SMPL-X 官方 UV 文件（`smplx_uv.obj`），之前找不到 UV 就直接失败，导致贴图烘焙跳过。
+
+**已修复**（`texture_bake_service.py`）：
+
+1. **扩大搜索**：递归扫描 `human_model_files` 下所有 `.obj` / `.pkl` / `.npz`，并尝试 `bm_x` 上更多 UV 字段  
+2. **trimesh 解析**：支持更多 OBJ 格式  
+3. **柱面 UV 回退**：仍找不到官方 UV 时，自动生成柱面展开并继续烘焙（会有 warning，但能出贴图）  
+4. **可选手动指定**：
+   ```env
+   SMPLX_UV_OBJ=/path/to/smplx_uv.obj
+   ```
+   或复制到 `api/assets/smplx_uv.obj`
+
+### 你需要做的
+
+**方案 A（推荐，质量更好）**  
+从 SMPL-X 官方包复制 `smplx_uv.obj` 到服务器：
+
+```bash
+cp /path/to/smplx/smplx_uv.obj /root/hrm/api/assets/smplx_uv.obj
+# 或
+# 在 api/.env 设置 SMPLX_UV_OBJ=/path/to/smplx_uv.obj
+```
+
+**方案 B（无需额外文件）**  
+同步代码后**重新导出蒙皮网格**，会自动用柱面 UV 回退，日志类似：
+
+```
+WARNING ... 未找到 SMPL-X 官方 UV，使用柱面 UV 回退
+INFO ... UV 贴图已烘焙: avatar_diffuse.png
+```
+
+同步 `texture_bake_service.py`、`mesh_export_service.py`、`config.py` 后重试即可。若仍失败，把完整 `mesh_export_service` 日志贴出来。
+
+---
+
+_**User**_
+
+SMPL-X 官方 UV是什么？
+
+---
+
+_**Agent (default)**_
+
+**SMPL-X 官方 UV**，指的是 SMPL-X 模型作者提供的、与 SMPL-X 人体网格**一一对应的标准 UV 展开**（纹理坐标），用来把 2D 贴图正确贴到 3D 人体上。
+
+### 它是什么？
+
+- **UV**：每个网格顶点在 0–1 平面上的 `(u, v)` 坐标  
+- **官方 UV**：SMPL-X 下载包里的固定拓扑 UV，和 SMPL-X 的顶点/面片布局配套  
+- 常见文件名：**`smplx_uv.obj`**（在 SMPL-X 官方资源里）
+
+可以把它理解成：SMPL-X 自带的「标准裁片图」，衣服/皮肤贴图都按这张裁片来画。
+
+### 和 HRM 的关系
+
+HRM 导出 FBX 时要：
+
+1. 把 **3DGS 的颜色** 烘到 **2D 贴图**（`avatar_diffuse.png`）  
+2. 再贴到 **SMPL-X 蒙皮网格** 上  
+
+第 2 步必须知道「每个顶点对应贴图上的哪个像素」——这就是 UV。  
+没有 UV，就无法正确烘焙/贴图，只能退化成柱面展开等近似方案（会有接缝、失真）。
+
+### 从哪里拿？
+
+来自 **SMPL-X 官方注册下载**（需同意许可）：
+
+- 站点：[https://smpl-x.is.tue.mpg.de/](https://smpl-x.is.tue.mpg.de/)  
+- 下载 SMPL-X 模型包后，通常在类似路径：
+  ```
+  smplx/smplx_uv.obj
+  ```
+- LHM++ 的 `human_model_files` 里**往往只有** mesh、权重、shape 等，**不一定包含**这个 UV 文件
+
+### 在 HRM 里怎么用？
+
+任选一种：
+
+```bash
+# 方式 1：放到 HRM 项目
+cp smplx_uv.obj /root/hrm/api/assets/smplx_uv.obj
+
+# 方式 2：在 api/.env 指定路径
+SMPLX_UV_OBJ=/path/to/smplx_uv.obj
+```
+
+### 和「柱面 UV 回退」的区别
+
+| | 官方 SMPL-X UV | 柱面 UV 回退（HRM 自动） |
+|---|---|---|
+| 来源 | SMPL-X 官方 `smplx_uv.obj` | 按顶点位置自动算 |
+| 质量 | 接缝少、适合人体贴图 | 能用，但侧面/背面易花、有接缝 |
+| 是否需要额外文件 | 需要（SMPL-X 许可） | 不需要 |
+
+**总结**：官方 UV 就是 SMPL-X 自带的「标准纹理坐标表」；有它，3DGS 烘焙到 FBX 的贴图会更准、更自然。若你已有 SMPL-X 账号，下载后把 `smplx_uv.obj` 拷到 HRM 即可。
+
+---
+
+_**User**_
+
+HRM 有SMPLX_NEUTRAL.npz吗？
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "SMPLX_NEUTRAL|smplx.*\\.npz|human_model_files"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "SMPLX_NEUTRAL|smplx.*\\.npz|human_model_files",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 3,
+      "uri": "api/services/lhmpp_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\config.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\.env.example"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\assets\\README.md"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 21,
+      "uri": ".specstory\\history\\2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    },
+    {
+      "matchCount": 26,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    },
+    {
+      "matchCount": 21,
+      "uri": ".specstory/history/2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/services/motion_service.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/patches/to_gs_ply.py.patch"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/services/lhm_infer_utils.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\services\\texture_bake_service.py"
+    }
+  ],
+  "totalFiles": 14,
+  "totalMatches": 92
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SMPLX|human_model|npz|prior"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SMPLX|human_model|npz|prior",
+  "topFiles": [
+    {
+      "matchCount": 7,
+      "uri": "README.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 7
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="web_search">
+<details>
+<summary>Tool use: **web_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "searchTerm": "LHM-plusplus human_model_files SMPLX_NEUTRAL.npz structure"
+}
+```
+Result:
+
+```json
+{
+  "isFinal": true,
+  "references": [
+    {
+      "chunk": "Links:\n1. [vchoutas/smplx](https://github.com/vchoutas/smplx?tab=readme-ov-file)\n2. [README.md at main · aigc3d/LHM-plusplus](https://github.com/aigc3d/LHM-plusplus/blob/main/README.md)\n3. [README.md at main · vchoutas/smplx](https://github.com/vchoutas/smplx/blob/main/README.md)\n4. [SMPLer_X_colab.ipynb at main · camenduru/SMPLer-X-colab](https://github.com/camenduru/SMPLer-X-colab/blob/main/SMPLer_X_colab.ipynb)\n\nSynthesis:\nFor LHM++ and similar SMPL-X based projects, human_model_files typically follow a standardized directory structure where model parameters are stored in specific subfolders [1][2][3]. To use the SMPL-X models, you must place the files inside a dedicated smplx subdirectory [4][5].\n\nThe expected file structure for the smplx component is [4][6]:\n\nhuman_model_files/\n└── smplx/\n ├── SMPLX_NEUTRAL.npz\n ├── SMPLX_NEUTRAL.pkl\n ├── SMPLX_MALE.npz\n ├── SMPLX_MALE.pkl\n ├── SMPLX_FEMALE.npz\n └── SMPLX_FEMALE.pkl\n\nYou can download these model files from the official SMPL-X website or use the provided scripts in projects like LHM++ to fetch them automatically [1][2]. Ensure that both.npz and.pkl versions are present, as certain library functions specifically require the.npz extension for data loading [7][8][9].\n\nHighlights:\n\u003cresult id=\"1\"\u003e\n\u003ctitle\u003evchoutas/smplx\u003c/title\u003e\n\u003curl\u003ehttps://github.com/vchoutas/smplx?tab=readme-ov-file\u003c/url\u003e\n\u003ccontent\u003ethe [create](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.\n...\n#L54)\n...\nfunction from [body_models](./smplx/body_models.py) or directly call the constructor for the \n[SMPL](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L106), \n[SMPL+H](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L395) and \n[SMPL-X](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L628) model. The path to the model can either be the path to the file with the parameters or a directory with the following structure:\n...\n&#96;&#96;&#96;bash\nmodels\n├── smpl\n│   ├── SMPL_FEMALE.pkl\n│   └── SMPL_MALE.pkl\n│   └── SMPL_NEUTRAL.pkl\n├── smplh\n│   ├── SMPLH_FEMALE.pkl\n│   └── SMPLH_MALE.pkl\n├── mano\n|   ├── MANO_RIGHT.pkl\n|   └── MANO_LEFT.pkl\n└── smplx\n    ├── SMPLX_FEMALE.npz\n    ├── SMPLX_FEMALE.pkl\n    ├── SMPLX_MALE.npz\n    ├── SMPLX_MALE.pkl\n    ├── SMPLX_NEUTRAL.npz\n    └── SMPLX_NEUTRAL.pkl\n&#96;&#96;&#96;\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"2\"\u003e\n\u003ctitle\u003eREADME.md at main · aigc3d/LHM-plusplus\u003c/title\u003e\n\u003curl\u003ehttps://github.com/aigc3d/LHM-plusplus/blob/main/README.md\u003c/url\u003e\n\u003ccontent\u003eUse the download script to fetch prior models (human_model_files, voxel_grid, arcface, etc.) and LHM++ weights. Skips items that already exist. Tries HuggingFace first, falls back to ModelScope.\n...\nmodels + pretrained weights (default)\npython scripts/download_pretrained_models.py\n...\n# Prior models only (human_model_files, voxel_grid, BiRefNet, etc.)\npython scripts/download_pretrained_models.py --prior\n...\n# LHM++ model weights only (LHMPP-700M, LHMPP-700MC, LHMPPS-700M)\npython scripts/download_pretrained_models.py --models\n...\npython scripts/\n...\nsave-dir\n...\n# LHMPP-Prior (prior models: human_model_files, voxel_grid, BiRefNet, etc.)\nmodel_dir = snapshot_download(model_id='Damo_XR_Lab/LHMPP-Prior', cache_dir='./pretrained_models')\n...\n&#96;&#96;&#96;bash\n├── app.py\n├── assets\n│\n...\n│\n...\nimages\n│   └──\n...\n│\n...\nview.yaml\n│       ├── LHMPP-any-view.yaml\n...\nany-view-conv\n...\nany-view-DPTS.\n...\nmodules\n│\n...\n│\n...\n├── dnnlib\n├── engine\n│   ├── BiRefNet\n│   ├── pose_estimation\n│   └── ouputs.py\n├── exps\n│   ├── checkpoints\n│   ├── releases\n│   └── ...\n├── lib\n│   └── pointops\n├── pretrained_models\n│   ├── dense_sample_points\n│   ├── gagatracker\n│   ├── human_model_files\n│   ├── voxel_grid\n│   ├── arcface_resnet18.pth\n│   ├── BiRefNet-general-epoch_244.pth\n│   ├── Damo_XR_Lab\n│   └── huggingface\n├── scripts\n│   ├── exp\n│   ├── inference\n│   ├── mvs_render\n│   ├── pose_estimator\n│   ├── test\n│   ├── convert\n...\nhf.py\n│   ├── download_all.py\n│   ├──\n...\n_motion_video.py\n│   ├── download_pretrained_models.py\n│   └── upload_hub.py\n...\n│\n...\nexample_imgs\n│   └──\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"3\"\u003e\n\u003ctitle\u003eREADME.md at main · vchoutas/smplx\u003c/title\u003e\n\u003curl\u003ehttps://github.com/vchoutas/smplx/blob/main/README.md\u003c/url\u003e\n\u003ccontent\u003eeither use the [create](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.\n...\n#L54)\n...\nfunction from [body_models](./smplx/body_models.py) or directly call the constructor for the \n[SMPL](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L106), \n[SMPL+H](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L395) and \n[SMPL-X](https://github.com/vchoutas/smplx/blob/c63c02b478c5c6f696491ed9167e3af6b08d89b1/smplx/body_models.py#L628) model. The path to the model can either be the path to the file with the parameters or a directory with the following structure:\n...\n&#96;&#96;&#96;bash\nmodels\n├── smpl\n│   ├── SMPL_FEMALE.pkl\n│   └── SMPL_MALE.pkl\n│   └── SMPL_NEUTRAL.pkl\n├── smplh\n│   ├── SMPLH_FEMALE.pkl\n│   └── SMPLH_MALE.pkl\n├── mano\n|   ├── MANO_RIGHT.pkl\n|   └── MANO_LEFT.pkl\n└── smplx\n    ├── SMPLX_FEMALE.npz\n    ├── SMPLX_FEMALE.pkl\n    ├── SMPLX_MALE.npz\n    ├── SMPLX_MALE.pkl\n    ├── SMPLX_NEUTRAL.npz\n    └── SMPLX_NEUTRAL.pkl\n&#96;&#96;&#96;\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"4\"\u003e\n\u003ctitle\u003eSMPLer_X_colab.ipynb at main · camenduru/SMPLer-X-colab\u003c/title\u003e\n\u003curl\u003ehttps://github.com/camenduru/SMPLer-X-colab/blob/main/SMPLer_X_colab.ipynb\u003c/url\u003e\n\u003ccontent\u003eSMPL_NEUTRAL.pkl\n...\nd /content\n...\n-X/common/utils/human_model_files/smpl -o\n...\nL_NEUTRAL.pkl\\n\n...\n-c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/MANO_SMPLX_vertex_ids.pkl -d /content/SMPLer\n...\nX/common/utils\n...\nmodel_files/smplx -o MANO_SMPLX_vertex_ids.pkl\\n\",\n        \"!aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPL-X__FLAME_vertex_ids.npy -d /content/SMPLer-X/common/utils/human_model_files/smplx -o SMPL-X__FLAME_vertex_ids.npy\\n\",\n...\n\"!aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPLX_NEUTRAL.npz -d /content/SMPLer-X/common/utils/human_model_files/smplx -o SMPLX_NEUTRAL.npz\\n\",\n        \"!aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPLX_NEUTRAL.pkl -d /content/SMPLer-X/common/utils/human_model_files/smplx -o SMPLX_NEUTRAL.pkl\\n\",\n        \"!aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPLX_to_J14.pkl -d /content/SMPLer-X/common/utils/human_model_files/smplx -o SMPLX_to_J14.pkl\\n\",\n        \"!aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMP\n...\n_MALE.npz -d /content/SMPLer-X/common/utils/\n...\nz\\n\",\n        \"!\n...\n\"!aria\n...\nM https://hugging\n...\n.co/\n...\n/SMPLer-X/resolve/main/test_video.mp4 -\n...\nSMPLer-X\n...\n2 * inv\n...\nmask_c2 = inv_mask_d2 * mask_\n...\n0_nd1\\\\\n...\nmask_c3 = inv\n...\n2 * inv\n...\n1' /usr\n...\nlib/python3\n...\n10/\n...\npackages/torch\n...\n/core/conversions.py\"\n...\n{\n      \"\n...\ncode\",\n      \"execution\n...\n{},\n      \"outputs\n...\n[],\n      \"source\n...\n[\n        \"!mkdir -p /content/SMP\n...\n-X/demo/images/test_video\\n\",\n        \"!mkdir -p /content\n...\nX/demo/results\n...\n\"%cd /content\n...\n\"#\n...\n\"#\n...\n_video mp4 24 smpler_x_l32\\\n...\ni /content\u003c/content\u003e\n\u003c/result\u003e",
+      "title": "Web search results"
+    }
+  ],
+  "rejected": false
+}
+```
+User decision: **accepted**
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="web_search"><details>
+<summary>Tool use: **web_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+HRM 仓库本身不包含 SMPLX_NEUTRAL.npz。该文件体积过大且受许可证限制，未纳入 Git 版本控制。
+
+LHM++ 安装时会从 HuggingFace 下载 human_model_files，其中通常包含 SMPL-X 参数文件。SMPLX_NEUTRAL.npz 是官方 SMPL-X 身体模型数据（顶点模板、混合形状、LBS 权重等），与 smplx_uv.obj 不同。若重建流程正常运行，该文件大概率已存在。</details></think>
+
+_**Agent (default)**_
+
+**HRM 仓库本身没有** `SMPLX_NEUTRAL.npz`——它不会随 HRM 的 git 一起提交（体积大，且受 SMPL-X 许可约束）。
+
+### 实际在哪里？
+
+文件在 **LHM++ 的先验模型目录**里，路径一般是：
+
+```text
+$LHM_ROOT/pretrained_models/human_model_files/smplx/SMPLX_NEUTRAL.npz
+```
+
+（有时也在 `human_model_files/` 子目录下，具体以 LHM++ 下载包为准。）
+
+首次跑 LHM++ / HRM 时，会通过 `download_pretrained_models.py` 或 HuggingFace 上的 **LHMPP-Prior** 自动下载 `human_model_files`。
+
+### 怎么确认服务器上有没有？
+
+```bash
+find /path/to/LHM-plusplus/pretrained_models/human_model_files -iname "SMPLX_NEUTRAL.npz"
+```
+
+若 **3D 重建、动作驱动能正常跑**，通常说明 SMPL-X 相关文件已经在了（HRM 的 `SMPL_Layer` 就是从这里读的）。
+
+### 它和「官方 UV」的关系
+
+| 文件 | 作用 | HRM 是否自带 |
+|------|------|-------------|
+| `SMPLX_NEUTRAL.npz` | 网格拓扑、shape、LBS 权重、关节等 | ❌ 仓库无；✅ LHM++ 下载后一般有 |
+| `smplx_uv.obj` | **UV 纹理坐标**（贴图烘焙用） | ❌ 通常不在 npz 里，LHM++ 包里也常缺 |
+
+也就是说：**有 `SMPLX_NEUTRAL.npz` 只能保证能出蒙皮网格和绑骨，不能保证贴图烘焙**；贴图还需要单独的 `smplx_uv.obj`（或 HRM 的柱面 UV 回退）。
+
+### 若找不到 npz
+
+在 LHM++ 目录执行：
+
+```bash
+python scripts/download_pretrained_models.py --prior
+```
+
+或按 [LHM++ README](https://github.com/aigc3d/LHM-plusplus) 手动把 SMPL-X 官方文件放进 `human_model_files/smplx/`。  
+SMPL-X 需先在 [smpl-x.is.tue.mpg.de](https://smpl-x.is.tue.mpg.de/) 注册下载。
+
+---
+
+_**User**_
+
+LHM++除了SMPL-X还支持其它的吗？
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "smplx|smpl|SMPL|human_model|body_model|type="
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "smplx|smpl|SMPL|human_model|body_model|type=",
+  "topFiles": [
+    {
+      "matchCount": 3,
+      "uri": "api/patches/to_gs_ply.py.patch"
+    },
+    {
+      "matchCount": 7,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\config.py"
+    },
+    {
+      "matchCount": 7,
+      "uri": "api/routers/avatars.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/services/blender_fbx_export.py"
+    },
+    {
+      "matchCount": 40,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 14,
+      "uri": "api/services/motion_service.py"
+    },
+    {
+      "matchCount": 17,
+      "uri": "api/services/lhmpp_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\services\\blender_fbx_export.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/services/job_manager.py"
+    },
+    {
+      "matchCount": 9,
+      "uri": "api/services/lhm_infer_utils.py"
+    },
+    {
+      "matchCount": 3,
+      "uri": "api/routers/stream.py"
+    },
+    {
+      "matchCount": 42,
+      "uri": "api\\services\\texture_bake_service.py"
+    },
+    {
+      "matchCount": 4,
+      "uri": "api\\assets\\README.md"
+    },
+    {
+      "matchCount": 40,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 4,
+      "uri": "api\\.env.example"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/patches/README.md"
+    },
+    {
+      "matchCount": 7,
+      "uri": "api/scripts/blender_export_fbx.py"
+    }
+  ],
+  "totalFiles": 18,
+  "totalMatches": 204
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SMPL|smplx|smpl"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "SMPL|smplx|smpl",
+  "topFiles": [
+    {
+      "matchCount": 31,
+      "uri": "README.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 31
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="web_search">
+<details>
+<summary>Tool use: **web_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "searchTerm": "LHM++ LHM-plusplus SMPL SMPL-X body model support"
+}
+```
+Result:
+
+```json
+{
+  "isFinal": true,
+  "references": [
+    {
+      "chunk": "Links:\n1. [LHM++](https://lingtengqiu.github.io/LHM++/)\n2. [README.md at main · aigc3d/LHM-plusplus](https://github.com/aigc3d/LHM-plusplus/blob/main/README.md)\n3. [Lab 1: SMPL-X Human Body Modeling | Yixin Zhu | PKU](https://yzhu.io/courses/core/labs/lab1/)\n4. [LHM++: An Efficient Human Reconstruction Model for Pose-free Images to 3D](https://arxiv.org/html/2506.13766v2)\n5. [aigc3d/LHM-plusplus](https://github.com/aigc3d/LHM-plusplus)\n\nSynthesis:\nLHM++ is an efficient large-scale human reconstruction model that generates animatable 3D avatars from pose-free images using an Encoder-Decoder Point-Image Transformer architecture [1][2]. The model natively integrates the SMPL-X parametric body model [3][4]. It uses SMPL-X anchor points as geometric priors to regress 3D Gaussian Splatting parameters, enabling high-fidelity rendering and motion-driven animation [1][4].\n\nYou can export these reconstructions as standard.ply files via the &#96;scripts/inference/to_gs_ply.py&#96; script, which supports both canonical T-pose and SMPL-X posed frames [5][6]. Support is currently limited to the &#96;LHMPP-700M-SMPLX-FREE&#96; model variant [6][7].\n\nHighlights:\n\u003cresult id=\"1\"\u003e\n\u003ctitle\u003eLHM++\u003c/title\u003e\n\u003curl\u003ehttps://lingtengqiu.github.io/LHM++/\u003c/url\u003e\n\u003ccontent\u003e## LHM++: An Efficient Large Human Reconstruction Model for Pose-free Images to 3D\n...\nReconstructing animatable 3D humans from casually captured images of articulated subjects without camera or pose information is highly practical but remains challenging due to view misalignment, occlusions, and the absence of structural priors. In this work, we present LHM++, an efficient large-scale human reconstruction model that generates high-quality, animatable 3D avatars within seconds from one or multiple pose-free images. At its core is an Encoder–Decoder Point–Image Transformer architecture that progressively encodes and decodes 3D geometric point features to improve efficiency, while fusing hierarchical 3D point features with image features through multimodal attention. The fused features are decoded into 3D Gaussian splats to recover detailed geometry and appearance. To further enhance visual fidelity, we introduce a lightweight 3D-aware neural animation renderer that refines the rendering quality of reconstructed avatars. Extensive experiments show that our method produces high-fidelity, animatable 3D humans without requiring camera or pose annotations.\n...\nOverview of the proposed LHM++. In 2D space, we extract image tokens T2D from input RGB images by DINOv2. In 3D space, geometric tokens T3D are derived from SMPL-X anchor points via an MLP. Next, we design an Encoder-Decoder Point-Image Transformer (PIT) to hierarchically fuse 3D and 2D tokens, where the downsampled 3D tokens interact with 2D tokens via multi-modal attention in each layer. The final 3D tokens are decoded to predict 3D Gaussian parameters, followed by a light-weight DPT head for photorealistic animation.\n...\n-Image Transformer, LHM++ achieves dramatic speedups over LHM-0.7B across all configurations.\n...\nshown below, L\n...\n160K\n...\na single image in\n...\nfor LHM-\n...\nspeedup. Even\n...\n6 input views\n...\nLHM++ completes inference\n...\n13 s, making it highly practical for\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"2\"\u003e\n\u003ctitle\u003eREADME.md at main · aigc3d/LHM-plusplus\u003c/title\u003e\n\u003curl\u003ehttps://github.com/aigc3d/LHM-plusplus/blob/main/README.md\u003c/url\u003e\n\u003ccontent\u003e**LHM++** is an efficient large-scale human reconstruction model that generates high-quality, animatable 3D avatars within seconds from one or multiple pose-free images. It achieves dramatic speedups over LHM-0.7B  via an Encoder-Decoder Point-Image Transformer architecture. See the [project website](https://lingtengqiu.github.io/LHM++/) for more details.\n...\n| Type | Views | Feat. Dim | Attn. Heads | # GS Points | Encoder Dim. | Service Requirement | Inference Time (1v) | Inference Time (4v) | Inference Time (8v) | Inference Time (16v) |\n|------|-------|------------|-------------|-------------|--------------|---------------------|--------------------|--------------------|--------------------|---------------------|\n| LHMPP-700M | Any | 1024 | 16 | 160,000 | 1024 | 8 GB | 0.79 s | 1.00 s | 1.31 s | 2.13 s |\n| LHMPPS-700M | Any | 1024 | 16 | 160,000 | 1024 | 7.3 GB | 0.79 s | 1.00 s | 1.31 s | 2.13 s |\n...\nUse the download script to fetch prior models (human_model_files, voxel_grid, arcface, etc.) and LHM++ weights. Skips items that already exist. Tries HuggingFace first, falls back to ModelScope.\n...\n# LHM++ model weights only (LHMPP-700M, LHMPP-700MC, LHMPPS-700M)\npython scripts/download_pretrained_models.py --models\n...\n# LHMPP-700M (default model weights)\nmodel_dir\n...\nMPP-700M',\n...\nLHMPP-700MC\n...\nLHMPPS-700M\n# model_dir\n...\nsnapshot_download(model_id='Damo_XR\n...\nLab/LHMPP-700MC', cache_dir\n...\npretrained_models')\n...\n# model_dir =\n...\n/LHMPPS-700M', cache_dir='./\n...\n_models')\n...\n# LHMPP-Prior (prior models: human_model_files, voxel_grid, BiRefNet, etc.)\nmodel_dir = snapshot_download(model_id='Damo_XR_Lab/LHMPP-Prior', cache_dir='./pretrained_models')\n...\nNow, we support user motion sequence input. As the pose estimator requires some GPU memory, this Gradio application requires at least 8 GB of GPU memory to run LHMPP-700M with 8-view inputs.\n...\n# Run LHM++ with Gradio API\npython ./app.py --model_name [LHMPP-700M, LHMPPS-700M], default LHMPP-700M\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"3\"\u003e\n\u003ctitle\u003eLab 1: SMPL-X Human Body Modeling | Yixin Zhu | PKU\u003c/title\u003e\n\u003curl\u003ehttps://yzhu.io/courses/core/labs/lab1/\u003c/url\u003e\n\u003ccontent\u003e# Lab 1: SMPL-X Human Body Modeling\n...\nThis assignment serves as a comprehensive recap of an important topic covered in our course: human body representation using SMPL-X. You will work with 3D human pose visualization and joint-to-smplx optimization that are widely used in computer vision and graphics research.\n...\nSMPL-X (SMPL eXpressive) is a expressive body model that represents the human body shape and pose through a parametric model. It extends the original SMPL model to include facial expressions and hand articulation, making it suitable for full-body human modeling applications.\n...\n- Understand the SMPL-X parametric human body model\n- Gain hands-on experience with PyTorch\n...\n### Task 1: SMPL-X Pose Visualization (\n...\nObjective: Implement a function to visualize 3D human poses using the SMPL-X model.\n...\nDescription: You will complete the&#96;visualize_smplx()&#96; function in&#96;framework.py&#96;. Given SMPL-X parameters (translation, body pose, and global orientation), your function should generate and display a 3D mesh visualization of the human pose and save it in .png format.\n...\n### Task 2: Joints to SMPL-X Pose Regression (50 points)\n...\nObjective: Implement an optimization function to estimate SMPL-X parameters from 3D joint positions.\n...\nDescription: Sometimes you can only get the 3D joint positions of a human pose, therefore you need to convert the joint positions to SMPL-X parameters. Complete the&#96;optimize_smplx()&#96; function that takes 3D joint positions as input and optimizes SMPL-X parameters to best fit these target joints. This involves setting up an optimization loop with appropriate loss functions.\n...\n- Define appropriate loss function (joint position error)\n- Implement gradient-based optimization using PyTorch\n- Return optimized SMPL-X parameters\n...\n- Optimized SMPL-X parameters (translation, body_pose, global_orient)\n...\nYou should achieve a similar mesh rendering result as in Task 1\n...\n- SMPL-X Official Documentation\n- PyTorch Documentation\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"4\"\u003e\n\u003ctitle\u003eLHM++: An Efficient Human Reconstruction Model for Pose-free Images to 3D\u003c/title\u003e\n\u003curl\u003ehttps://arxiv.org/html/2506.13766v2\u003c/url\u003e\n\u003ccontent\u003eMore recently, LHM [37], a feed-forward network for single-image 3D human reconstruction, has shown promising progress toward real-time performance. It employs a transformer-based architecture to fuse geometric point features initialized from the canonical SMPL-X surfaces and image features to directly predict a 3D Gaussian Splatting [21] based avatar from a single image. However, as single-image-based methods are inherently limited by partial observations, they often struggle to reconstruct occluded or unseen regions, leading to oversmoothed surfaces or noticeable artifacts [41, 74].\n...\nWe start by\n...\ntokens and extracting\n...\ntokens from each\n...\n], allowing compact yet\n...\nupsamples the geometric tokens\n...\nspatial resolution.\n...\nFor single-image 3D human reconstruction, many methods adopt implicit neural representations [40, 41, 61, 7, 73, 71, 60, 64] to model complex human geometries. To improve geometric consistency and\n...\napproaches [8, 20, 1, 3] rely on parametric\n...\nmodels such as SMPL [2\n...\n, 32] to predict geometric\n...\nfor the reconstruction of clothed humans. However, reconstruction from\n...\nsingle image is an ill-posed problem. Current\n...\n, 55, 57, 49, 38] attempt to mitigate\n...\nby decoupling the\n...\ninto two stages: multi-view image synthesis using generative\n...\n, followed by 3D reconstruction. While these methods require\n...\n-consistent generation in\n...\nfirst stage, which is often unstable and challenging, this ultimately affects the quality of the reconstruction\n...\nInspired by LHM [37], we employ a set of spatial points P∈ℝNpoints×3P\\in\\mathbb{R}^{N_{\\text{points}}\\times 3} uniformly sampled from the SMPL-X surface in its canonical pose to serve as the anchors. Conditioned on the multi-image inputs, these points are processed and decoded to regress the human 3D Gaussian appearance in canonical space through a feed-forward transformer-based architecture. The pipeline can be formulated as:\u003c/content\u003e\n\u003c/result\u003e\n\n\u003cresult id=\"5\"\u003e\n\u003ctitle\u003eaigc3d/LHM-plusplus\u003c/title\u003e\n\u003curl\u003ehttps://github.com/aigc3d/LHM-plusplus\u003c/url\u003e\n\u003ccontent\u003e|------|-------|-------------|------------|-------------|-------------|--------------|---------------------|--------------------|--------------------|--------------------|---------------------|\n...\nAny | ✓ |\n...\n60,0\n...\n- **Export &#96;gs.ply&#96;:** Run [&#96;scripts/inference/to_gs_ply.py&#96;](./scripts/inference/to_gs_ply.py) to save **3D Gaussian Splatting** as a standard **&#96;.ply&#96;**—either **canonical T-pose** (leave &#96;--pose_dir&#96; empty) or **a single SMPL-X JSON frame** (&#96;--pose_dir&#96;). Supported for **&#96;LHMPP-700M-PixelShuffle&#96;** (default) and **&#96;LHMPP-700M-SMPLX-FREE&#96;** (see [&#96;GS_RENDER_SUPPORTED_MODEL_NAMES&#96;](./core/utils/model_card.py)). Full usage is in **Export Gaussian Splatting PLY (&#96;to_gs_ply.py&#96;)** under **Getting Started** below.\n...\n| Mode | Trigger | What you get |\n|------|---------|--------------|\n| **T-pose (canonical)** | Omit **&#96;--pose_dir&#96;** (empty / default) | Gaussians in **canonical T-pose** SMPL-X space, with a **synthetic** single-frame camera when no motion file is provided. |\n| **Any-pose (given SMPL-X frame)** | Set **&#96;--pose_dir&#96;** to **one** SMPL-X JSON | Gaussians **warped to that frame’s body pose** (and that JSON’s camera intrinsics are used in the forward pass). Not the full video / mask pipeline—only that file is read. |\n...\n** then builds\n...\n&#96;** →\n...\nsave_ply&#96;. **Any-pose** builds\n...\nfrom the JSON and saves the **first posed\n...\n** from **&#96;model.renderer.\n...\n_model&#96;\n...\nIf that path\n...\nmodels, the\n...\nfalls back** to **\n...\n.inference_\n...\nPass **&#96;--pose_dir&#96;** to a **single** SMPL-X parameter JSON (e.g. &#96;motion_video/BasketBall_I/smplx_params/00014.json&#96;). The script reads **only that file** for camera intrinsics + body pose (no video pipeline, no segmentation masks). The exported PLY is the **posed** Gaussian cloud from **&#96;animate_gs_model&#96;** (not the internal canonical-template-only branch). Optional FLAME sidecar: &#96;../flame_params/\u003csame_basename\u003e.json&#96;.\u003c/content\u003e\n\u003c/result\u003e",
+      "title": "Web search results"
+    },
+    {
+      "chunk": "Full page text written to file: C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\a8a834ef-15a0-47d6-9b51-8a82104ec825.txt\nSize: 79.5 KB, 692 lines\nUse shell / grep / read_file on this path to inspect the page; no follow-up fetch is needed.",
+      "title": "LHM++: An Efficient Human Reconstruction Model for Pose-free Images to 3D",
+      "url": "https://arxiv.org/html/2506.13766v2"
+    },
+    {
+      "chunk": "Full page text written to file: C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\71f39881-53a7-4e03-a60a-95ef817f2880.txt\nSize: 21.9 KB, 460 lines\nUse shell / grep / read_file on this path to inspect the page; no follow-up fetch is needed.",
+      "title": "aigc3d/LHM-plusplus",
+      "url": "https://github.com/aigc3d/LHM-plusplus"
+    }
+  ],
+  "rejected": false
+}
+```
+User decision: **accepted**
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="web_search"><details>
+<summary>Tool use: **web_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\.specstory",
+  "pattern": "SMPL_Layer|type=\\\"smpl|smplh|SMPLX-FREE|model_name"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\.specstory",
+  "pattern": "SMPL_Layer|type=\\\"smpl|smplh|SMPLX-FREE|model_name",
+  "topFiles": [
+    {
+      "matchCount": 30,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 194
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "LHMPP-700M|PixelShuffle|SMPLX-FREE|model_name"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\README.md",
+  "pattern": "LHMPP-700M|PixelShuffle|SMPLX-FREE|model_name",
+  "topFiles": [
+    {
+      "matchCount": 5,
+      "uri": "README.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 5
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+LHM++ 目前仅支持 SMPL-X，不支持其他身体模型。
+
+LHM++ 的不同变体（如 700M、PixelShuffle、SMPLX-FREE 等）仅在网络架构或速度上有所差异，并非支持其他身体模型。</details></think>
+
+_**Agent (default)**_
+
+**就人体参数化模板而言，LHM++ 主线只围绕 SMPL-X，没有像 SMPL / SMPL+H / FLAME 那样可切换的另一套身体模型。**
+
+### 1. 人体模板：基本是 SMPL-X
+
+LHM++ 的设计是：
+
+- 在 **SMPL-X 规范表面** 上采样锚点，再预测 3D 高斯
+- 动作用 **SMPL-X 参数**（`smplx_params`）
+- 体型、姿态估计也走 **SMPL-X**（`PoseEstimator` / `SMPL_Layer(type="smplx")`）
+
+论文和官方仓库都写得很明确：几何先验是 **SMPL-X canonical surface**，不是通用任意网格。
+
+HRM 这边同样写死为 SMPL-X：55 关节、LBS 权重、`SMPL_Layer(type="smplx")` 等。
+
+### 2. 「其它」通常指模型 checkpoint，不是别的骨架
+
+LHM++ 提供多种 **神经网络权重**，人体模板仍是 SMPL-X：
+
+| 模型名 | 区别（简要） |
+|--------|----------------|
+| `LHMPP-700M` | 标准版，可用外部 SMPL-X 体型估计 |
+| `LHMPP-700M-PixelShuffle` | 架构变体（HRM 默认） |
+| `LHMPP-700M-SMPLX-FREE` | 不用外部 PoseEstimator，体型由模型内部 ShapeHead 预测 |
+| `LHMPP-700MC` / `LHMPPS-700M` | 其它 checkpoint / 加速版 |
+
+这些是 **同一 SMPL-X 管线下的不同模型文件**，不是换成 SMPL 或别的骨骼。
+
+### 3. `human_model_files` 里可能有 SMPL 系列文件
+
+LHM++ 下载的 `human_model_files` 里有时会有：
+
+- `smplx/SMPLX_NEUTRAL.npz`
+- 以及 SMPL / SMPL+H 等（给姿态、兼容工具用）
+
+但 **3D 重建 + 动画主流程用的是 SMPL-X**。HRM 不会切到 SMPL 或 SMPL+H 去出 Avatar。
+
+### 4. 不支持什么？
+
+- 非人体（动物、道具、场景）
+- 任意拓扑 / 自定义骨架（Mixamo 骨骼需重定向，不是开箱即用）
+- 与 SMPL-X 脱钩的独立网格（如 SuGaR 抽出来的任意网格）——能当几何看，但 **不能** 直接沿用 LHM++ 的 55 关节绑骨
+
+### 5. 和上一代 LHM 的关系
+
+更早的 **[LHM (0.7B)](https://github.com/aigc3d/LHM)** 也是 **可动画人体 + 参数化模型 + 3DGS** 路线；LHM++ 是更快、更强的版本，并 **明确升级到 SMPL-X**（含手、脸、表情自由度）。HRM 面向的是 **LHM++ + SMPL-X**。
+
+---
+
+**一句话**：LHM++ 的「人体」只有 **SMPL-X** 这一套；你能换的是 **700M / PixelShuffle / SMPLX-FREE** 等模型权重，不是 SMPL、FLAME 或别的骨架。若你需要非 SMPL-X 角色，要在 LHM++ 之外另做网格与绑骨。

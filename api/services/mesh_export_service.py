@@ -492,7 +492,7 @@ def export_skinned_mesh_from_gaussian(
         try:
             from services.texture_bake_service import bake_diffuse_from_gaussian_ply, load_smplx_uv
 
-            uvs, uv_faces = load_smplx_uv(root, faces)
+            uvs, uv_faces = load_smplx_uv(root, faces, mesh_verts=displaced_verts)
             bake_diffuse_from_gaussian_ply(
                 ply_path,
                 displaced_verts,

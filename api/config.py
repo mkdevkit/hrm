@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     fbx_texture_size: int = 2048
     fbx_subdivision_levels: int = 1  # 0=低模，1≈4×面，2≈16×面
     fbx_bake_texture: bool = True
+    # 可选：SMPL-X 官方 smplx_uv.obj（human_model_files 无 UV 时手动指定）
+    smplx_uv_obj: str = ""
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

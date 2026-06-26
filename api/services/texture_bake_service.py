@@ -67,7 +67,7 @@ def sample_colors_at_vertices(
 
 
 def parse_obj_uv(obj_path: Path) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
-    """从 OBJ 解析 vt 与 f v/vt 面（vt 索引与 v 对齐时可直接用 faces）。"""
+    """从 OBJ 解析 vt 与 f v/vt 面。"""
     verts_uv: list[list[float]] = []
     faces_uv: list[list[int]] = []
     for line in obj_path.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -88,15 +88,164 @@ def parse_obj_uv(obj_path: Path) -> tuple[np.ndarray, np.ndarray] | tuple[None, 
     return np.asarray(verts_uv, dtype=np.float32), np.asarray(faces_uv, dtype=np.int32)
 
 
-def load_smplx_uv(lhm_root: Path, faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """加载 SMPL-X UV；优先 LHM 模型字段，回退 human_model_files 内 OBJ。"""
-    import sys
+def _load_uv_from_trimesh(obj_path: Path, faces: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    try:
+        import trimesh
+    except ImportError:
+        return None
+
+    try:
+        loaded = trimesh.load(str(obj_path), process=False, force="mesh")
+    except Exception:
+        return None
+
+    if isinstance(loaded, trimesh.Scene):
+        meshes = [g for g in loaded.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        if not meshes:
+            return None
+        loaded = trimesh.util.concatenate(meshes)
+
+    visual = getattr(loaded, "visual", None)
+    uvs = getattr(visual, "uv", None) if visual is not None else None
+    if uvs is None or len(uvs) == 0:
+        return None
+
+    uvs = np.asarray(uvs, dtype=np.float32)
+    if uvs.ndim != 2 or uvs.shape[1] < 2:
+        return None
+    uvs = uvs[:, :2]
+
+    if len(uvs) == len(loaded.vertices):
+        if len(loaded.faces) == len(faces):
+            return uvs, np.asarray(loaded.faces, dtype=np.int32)
+        return uvs, faces.copy()
+    return None
+
+
+def _load_uv_from_pkl_npz(path: Path, faces: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    data: dict | None = None
+    if path.suffix.lower() == ".npz":
+        archive = np.load(path, allow_pickle=True)
+        data = {k: archive[k] for k in archive.files}
+    elif path.suffix.lower() in (".pkl", ".pickle"):
+        import pickle
+
+        with path.open("rb") as f:
+            try:
+                raw = pickle.load(f, encoding="latin1")
+            except TypeError:
+                raw = pickle.load(f)
+        data = raw if isinstance(raw, dict) else None
+
+    if not data:
+        return None
+
+    for uk, fk in (
+        ("vt", "ft"),
+        ("uv", "ft"),
+        ("texcoords", "texfaces"),
+        ("vtx_uv", "faces_uv"),
+    ):
+        if uk not in data or fk not in data:
+            continue
+        uvs = np.asarray(data[uk], dtype=np.float32)
+        uv_faces = np.asarray(data[fk], dtype=np.int32)
+        if uvs.ndim == 2 and uvs.shape[1] >= 2 and len(uv_faces) == len(faces):
+            return uvs[:, :2], uv_faces
+    return None
+
+
+def _load_uv_from_bm_x(bm: object, faces: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
     import torch
+
+    for attr in (
+        "vtx_uv",
+        "verts_uv",
+        "texcoords",
+        "uv",
+        "uvs",
+        "tex_uv",
+        "texture_uv",
+    ):
+        if not hasattr(bm, attr):
+            continue
+        raw = getattr(bm, attr)
+        if isinstance(raw, torch.Tensor):
+            uvs = raw.detach().cpu().numpy().astype(np.float32)
+        else:
+            uvs = np.asarray(raw, dtype=np.float32)
+        if uvs.ndim == 2 and uvs.shape[1] >= 2:
+            logger.info("SMPL-X UV 来自 bm_x.%s (%d)", attr, len(uvs))
+            uv_faces = faces.copy()
+            for fk in ("faces_uv", "ft", "texfaces"):
+                if hasattr(bm, fk):
+                    ff = getattr(bm, fk)
+                    if isinstance(ff, torch.Tensor):
+                        uv_faces = ff.detach().cpu().numpy().astype(np.int32)
+                    else:
+                        uv_faces = np.asarray(ff, dtype=np.int32)
+                    break
+            return uvs[:, :2], uv_faces
+    return None
+
+
+def _generate_cylindrical_uv(verts: np.ndarray) -> np.ndarray:
+    """无官方 UV 时的柱面展开回退（可烘焙 3DGS 颜色，质量低于 SMPL-X UV）。"""
+    x, y, z = verts[:, 0], verts[:, 1], verts[:, 2]
+    theta = np.arctan2(x, z)
+    u = (theta / (2.0 * np.pi)) + 0.5
+    y_min, y_max = float(y.min()), float(y.max())
+    v = (y - y_min) / (y_max - y_min + 1e-8)
+    return np.stack([u, v], axis=1).astype(np.float32)
+
+
+def _candidate_uv_paths(human_model: Path) -> list[Path]:
+    from config import settings
+
+    candidates: list[Path] = []
+    if settings.smplx_uv_obj:
+        candidates.append(Path(settings.smplx_uv_obj))
+    bundled = Path(__file__).resolve().parents[1] / "assets" / "smplx_uv.obj"
+    candidates.append(bundled)
+
+    if human_model.is_dir():
+        patterns = (
+            "*uv*.obj",
+            "smplx_uv.obj",
+            "smplx*.obj",
+            "*.obj",
+            "*uv*.npz",
+            "*.npz",
+            "*.pkl",
+        )
+        for pattern in patterns:
+            candidates.extend(sorted(human_model.rglob(pattern)))
+
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        unique.append(path)
+    return unique
+
+
+def load_smplx_uv(
+    lhm_root: Path,
+    faces: np.ndarray,
+    *,
+    mesh_verts: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """加载 SMPL-X UV；多源回退，最后使用柱面 UV。"""
+    import sys
 
     if str(lhm_root) not in sys.path:
         sys.path.insert(0, str(lhm_root))
 
     human_model = lhm_root / "pretrained_models" / "human_model_files"
+
     try:
         from engine.pose_estimation.blocks import SMPL_Layer
 
@@ -108,42 +257,42 @@ def load_smplx_uv(lhm_root: Path, faces: np.ndarray) -> tuple[np.ndarray, np.nda
             kid=False,
             person_center="head",
         )
-        bm = layer.bm_x
-        for attr in ("vtx_uv", "verts_uv", "texcoords", "uv"):
-            if hasattr(bm, attr):
-                raw = getattr(bm, attr)
-                if isinstance(raw, torch.Tensor):
-                    uvs = raw.detach().cpu().numpy().astype(np.float32)
-                else:
-                    uvs = np.asarray(raw, dtype=np.float32)
-                if uvs.ndim == 2 and uvs.shape[1] >= 2:
-                    uvs = uvs[:, :2]
-                    logger.info("SMPL-X UV 来自 bm_x.%s (%d)", attr, len(uvs))
-                    return uvs, faces.copy()
+        result = _load_uv_from_bm_x(layer.bm_x, faces)
+        if result is not None:
+            return result
     except Exception as exc:
         logger.warning("从 SMPL_Layer 读取 UV 失败: %s", exc)
 
-    search_roots = [human_model, human_model / "smplx", human_model / "models"]
-    obj_candidates: list[Path] = []
-    for root in search_roots:
-        if not root.is_dir():
+    for path in _candidate_uv_paths(human_model):
+        if path.suffix.lower() in (".pkl", ".pickle", ".npz"):
+            result = _load_uv_from_pkl_npz(path, faces)
+            if result is not None:
+                logger.info("SMPL-X UV 来自 %s", path)
+                return result
             continue
-        obj_candidates.extend(sorted(root.glob("*uv*.obj")))
-        obj_candidates.extend(sorted(root.glob("smplx*.obj")))
-        obj_candidates.extend(sorted(root.glob("*.obj")))
 
-    seen: set[Path] = set()
-    for obj_path in obj_candidates:
-        if obj_path in seen:
-            continue
-        seen.add(obj_path)
-        uvs, uv_faces = parse_obj_uv(obj_path)
+        uvs, uv_faces = parse_obj_uv(path)
         if uvs is not None and uv_faces is not None and len(uv_faces) == len(faces):
-            logger.info("SMPL-X UV 来自 OBJ: %s", obj_path.name)
+            logger.info("SMPL-X UV 来自 OBJ vt: %s", path.name)
             return uvs, uv_faces
 
+        result = _load_uv_from_trimesh(path, faces)
+        if result is not None:
+            logger.info("SMPL-X UV 来自 trimesh: %s", path.name)
+            return result
+
+    if mesh_verts is not None and len(mesh_verts) > 0:
+        logger.warning(
+            "未找到 SMPL-X 官方 UV，使用柱面 UV 回退。"
+            " 建议将 smplx_uv.obj 放到 %s 或设置 SMPLX_UV_OBJ",
+            human_model,
+        )
+        return _generate_cylindrical_uv(mesh_verts), faces.copy()
+
     raise RuntimeError(
-        "未找到 SMPL-X UV。请确认 LHM_ROOT/pretrained_models/human_model_files 含 smplx UV OBJ"
+        "未找到 SMPL-X UV。请将官方 smplx_uv.obj 复制到 "
+        f"{human_model} 或 api/assets/smplx_uv.obj，"
+        "或在 api/.env 设置 SMPLX_UV_OBJ=/path/to/smplx_uv.obj"
     )
 
 
@@ -230,7 +379,7 @@ def bake_diffuse_from_gaussian_ply(
     """3DGS PLY → SMPL-X UV diffuse 贴图。"""
     gaussian_xyz, gaussian_rgb = read_gaussian_ply_rgb(ply_path)
     vert_colors = sample_colors_at_vertices(mesh_verts, gaussian_xyz, gaussian_rgb)
-    uvs, uv_faces = load_smplx_uv(lhm_root, faces)
+    uvs, uv_faces = load_smplx_uv(lhm_root, faces, mesh_verts=mesh_verts)
     if len(uvs) != len(mesh_verts):
         logger.warning(
             "UV 顶点数 (%d) 与网格 (%d) 不一致，尝试按面索引映射",
