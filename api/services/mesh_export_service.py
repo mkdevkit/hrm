@@ -500,9 +500,11 @@ def export_skinned_mesh_from_gaussian(
                 root,
                 texture_path,
                 texture_size=settings.fbx_texture_size,
+                uvs=uvs,
+                uv_faces=uv_faces,
             )
         except Exception as exc:
-            logger.warning("3DGS UV 贴图烘焙失败，FBX 将无贴图: %s", exc)
+            logger.warning("3DGS UV 贴图烘焙失败，FBX 将无贴图: %s", exc, exc_info=True)
             texture_path = None
             uvs = None
             uv_faces = None
@@ -541,3 +543,97 @@ def export_skinned_mesh_from_gaussian(
         "fbx_texture_baked": bool(tex_for_fbx),
         "mock": False,
     }
+
+
+def rebake_skinned_mesh_from_output_dir(
+    output_dir: Path,
+    *,
+    ply_path: Path | None = None,
+    lhm_root: Optional[str] = None,
+) -> dict[str, Any]:
+    """对已有 output 目录重烘焙贴图并重新导出 FBX（无需重跑 3D 重建）。"""
+    output_dir = output_dir.resolve()
+    obj_path = output_dir / "avatar_skinned.obj"
+    skel_path = output_dir / "avatar_skeleton.json"
+    weights_path = output_dir / "avatar_lbs_weights.npz"
+    fbx_path = output_dir / "avatar_skinned.fbx"
+    texture_path = output_dir / "avatar_diffuse.png"
+
+    for path in (obj_path, weights_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"缺少文件: {path}")
+
+    if ply_path is None:
+        for candidate in (
+            output_dir / "avatar.ply",
+            output_dir / "gaussian.ply",
+            output_dir.parent / "avatar.ply",
+        ):
+            if candidate.is_file():
+                ply_path = candidate
+                break
+    if ply_path is None or not ply_path.is_file():
+        raise FileNotFoundError(
+            "未找到 3DGS PLY（请指定 ply_path 或将 avatar.ply 放在 output 目录）"
+        )
+
+    if lhm_root:
+        root = Path(lhm_root).resolve()
+    elif settings.lhm_root:
+        root = Path(settings.lhm_root).resolve()
+    else:
+        root = (Path(__file__).resolve().parents[2] / "LHM-plusplus").resolve()
+
+    archive = np.load(weights_path, allow_pickle=False)
+    faces = np.asarray(archive["faces"], dtype=np.int32)
+    displaced_verts = _read_obj_vertices(obj_path)
+
+    uvs: np.ndarray | None = None
+    uv_faces: np.ndarray | None = None
+    tex_for_fbx: Path | None = None
+
+    if settings.fbx_bake_texture:
+        from services.texture_bake_service import bake_diffuse_from_gaussian_ply, load_smplx_uv
+
+        uvs, uv_faces = load_smplx_uv(root, faces, mesh_verts=displaced_verts)
+        bake_diffuse_from_gaussian_ply(
+            ply_path,
+            displaced_verts,
+            faces,
+            root,
+            texture_path,
+            texture_size=settings.fbx_texture_size,
+            uvs=uvs,
+            uv_faces=uv_faces,
+        )
+        tex_for_fbx = texture_path if texture_path.is_file() else None
+
+    _write_obj(obj_path, displaced_verts, faces, uvs=uvs, uv_faces=uv_faces)
+    fbx_ok = export_skinned_fbx(
+        obj_path,
+        skel_path,
+        weights_path,
+        fbx_path,
+        texture_path=tex_for_fbx,
+        subdivision_levels=settings.fbx_subdivision_levels,
+    )
+
+    return {
+        "mesh_obj_path": str(obj_path),
+        "mesh_fbx_path": str(fbx_path) if fbx_ok else None,
+        "mesh_texture_path": str(tex_for_fbx) if tex_for_fbx else None,
+        "fbx_texture_baked": bool(tex_for_fbx),
+        "ply_path": str(ply_path),
+    }
+
+
+def _read_obj_vertices(obj_path: Path) -> np.ndarray:
+    verts: list[list[float]] = []
+    for line in obj_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if line.startswith("v "):
+            parts = line.split()
+            if len(parts) >= 4:
+                verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    if not verts:
+        raise ValueError(f"OBJ 无顶点: {obj_path}")
+    return np.asarray(verts, dtype=np.float32)

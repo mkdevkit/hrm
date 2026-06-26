@@ -199,14 +199,36 @@ def _generate_cylindrical_uv(verts: np.ndarray) -> np.ndarray:
     return np.stack([u, v], axis=1).astype(np.float32)
 
 
+def bundled_smplx_uv_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets" / "smplx_uv.obj"
+
+
+def _priority_uv_paths(human_model: Path) -> list[Path]:
+    """用户显式提供的 UV 路径（优先于 LHM++ 内置 bm_x）。"""
+    from config import settings
+
+    paths: list[Path] = []
+    if settings.smplx_uv_obj:
+        paths.append(Path(settings.smplx_uv_obj))
+    paths.append(bundled_smplx_uv_path())
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        unique.append(path)
+    return unique
+
+
 def _candidate_uv_paths(human_model: Path) -> list[Path]:
     from config import settings
 
     candidates: list[Path] = []
     if settings.smplx_uv_obj:
         candidates.append(Path(settings.smplx_uv_obj))
-    bundled = Path(__file__).resolve().parents[1] / "assets" / "smplx_uv.obj"
-    candidates.append(bundled)
+    candidates.append(bundled_smplx_uv_path())
 
     if human_model.is_dir():
         patterns = (
@@ -232,6 +254,52 @@ def _candidate_uv_paths(human_model: Path) -> list[Path]:
     return unique
 
 
+def _uv_indices_valid(
+    uvs: np.ndarray,
+    uv_faces: np.ndarray,
+    faces: np.ndarray,
+    mesh_verts: np.ndarray | None,
+) -> bool:
+    if len(uv_faces) != len(faces):
+        return False
+    if len(uvs) == 0:
+        return False
+    max_uv = int(uv_faces.max()) if len(uv_faces) else 0
+    max_geom = int(faces.max()) if len(faces) else 0
+    if max_uv >= len(uvs):
+        return False
+    if mesh_verts is not None and max_geom >= len(mesh_verts):
+        return False
+    return True
+
+
+def _try_load_uv_from_path(
+    path: Path,
+    faces: np.ndarray,
+    *,
+    mesh_verts: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    if path.suffix.lower() in (".pkl", ".pickle", ".npz"):
+        result = _load_uv_from_pkl_npz(path, faces)
+        if result is not None and _uv_indices_valid(result[0], result[1], faces, mesh_verts):
+            return result
+        return None
+
+    uvs, uv_faces = parse_obj_uv(path)
+    if uvs is not None and uv_faces is not None:
+        if _uv_indices_valid(uvs, uv_faces, faces, mesh_verts):
+            return uvs, uv_faces
+        if mesh_verts is not None and len(uvs) == len(mesh_verts):
+            per_vertex = uvs, faces.copy()
+            if _uv_indices_valid(*per_vertex, faces, mesh_verts):
+                return per_vertex
+
+    result = _load_uv_from_trimesh(path, faces)
+    if result is not None and _uv_indices_valid(result[0], result[1], faces, mesh_verts):
+        return result
+    return None
+
+
 def load_smplx_uv(
     lhm_root: Path,
     faces: np.ndarray,
@@ -246,6 +314,19 @@ def load_smplx_uv(
 
     human_model = lhm_root / "pretrained_models" / "human_model_files"
 
+    for path in _priority_uv_paths(human_model):
+        result = _try_load_uv_from_path(path, faces, mesh_verts=mesh_verts)
+        if result is not None:
+            logger.info("SMPL-X UV 来自 %s", path)
+            return result
+
+    bundled = bundled_smplx_uv_path()
+    if not bundled.is_file():
+        logger.info(
+            "未找到 api/assets/smplx_uv.obj（可将官方 smplx_uv.obj 放到 %s）",
+            bundled,
+        )
+
     try:
         from engine.pose_estimation.blocks import SMPL_Layer
 
@@ -258,27 +339,19 @@ def load_smplx_uv(
             person_center="head",
         )
         result = _load_uv_from_bm_x(layer.bm_x, faces)
-        if result is not None:
+        if result is not None and _uv_indices_valid(result[0], result[1], faces, mesh_verts):
             return result
+        if result is not None:
+            logger.warning("SMPL_Layer bm_x UV 索引无效，继续尝试其他来源")
     except Exception as exc:
         logger.warning("从 SMPL_Layer 读取 UV 失败: %s", exc)
 
     for path in _candidate_uv_paths(human_model):
-        if path.suffix.lower() in (".pkl", ".pickle", ".npz"):
-            result = _load_uv_from_pkl_npz(path, faces)
-            if result is not None:
-                logger.info("SMPL-X UV 来自 %s", path)
-                return result
+        if path.resolve() in {p.resolve() for p in _priority_uv_paths(human_model)}:
             continue
-
-        uvs, uv_faces = parse_obj_uv(path)
-        if uvs is not None and uv_faces is not None and len(uv_faces) == len(faces):
-            logger.info("SMPL-X UV 来自 OBJ vt: %s", path.name)
-            return uvs, uv_faces
-
-        result = _load_uv_from_trimesh(path, faces)
+        result = _try_load_uv_from_path(path, faces, mesh_verts=mesh_verts)
         if result is not None:
-            logger.info("SMPL-X UV 来自 trimesh: %s", path.name)
+            logger.info("SMPL-X UV 来自 %s", path)
             return result
 
     if mesh_verts is not None and len(mesh_verts) > 0:
@@ -375,14 +448,21 @@ def bake_diffuse_from_gaussian_ply(
     output_png: Path,
     *,
     texture_size: int = 2048,
+    uvs: np.ndarray | None = None,
+    uv_faces: np.ndarray | None = None,
 ) -> Path:
     """3DGS PLY → SMPL-X UV diffuse 贴图。"""
     gaussian_xyz, gaussian_rgb = read_gaussian_ply_rgb(ply_path)
     vert_colors = sample_colors_at_vertices(mesh_verts, gaussian_xyz, gaussian_rgb)
-    uvs, uv_faces = load_smplx_uv(lhm_root, faces, mesh_verts=mesh_verts)
+    if uvs is None or uv_faces is None:
+        uvs, uv_faces = load_smplx_uv(lhm_root, faces, mesh_verts=mesh_verts)
+    elif not _uv_indices_valid(uvs, uv_faces, faces, mesh_verts):
+        raise ValueError(
+            f"预加载 UV 索引无效: uvs={len(uvs)}, uv_faces={len(uv_faces)}, faces={len(faces)}"
+        )
     if len(uvs) != len(mesh_verts):
-        logger.warning(
-            "UV 顶点数 (%d) 与网格 (%d) 不一致，尝试按面索引映射",
+        logger.info(
+            "UV 坐标数 (%d) 与网格顶点 (%d) 不同，使用 geom_faces 映射顶点色",
             len(uvs),
             len(mesh_verts),
         )

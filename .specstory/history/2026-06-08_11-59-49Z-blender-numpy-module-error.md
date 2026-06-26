@@ -16085,3 +16085,224 @@ LHM++ 下载的 `human_model_files` 里有时会有：
 ---
 
 **一句话**：LHM++ 的「人体」只有 **SMPL-X** 这一套；你能换的是 **700M / PixelShuffle / SMPLX-FREE** 等模型权重，不是 SMPL、FLAME 或别的骨架。若你需要非 SMPL-X 角色，要在 LHM++ 之外另做网格与绑骨。
+
+---
+
+_**User**_
+
+INFO:     123.90.5.81:8051 - "GET /api/v1/jobs/d6d75553-04b4-4b83-89d5-ba64b061b805 HTTP/1.1" 200 OK
+2026-06-27 00:50:39,672 INFO [services.mesh_export_service] 已补全 skeleton.json 的 joint_rest_position
+s（55 关节，来源 OBJ+LBS 权重）
+2026-06-27 00:50:39,674 INFO [services.blender_fbx_export] Blender FBX 导出: /usr/bin/blender --backgro
+und --python-use-system-env --python /root/hrm/api/scripts/blender_export_fbx.py -- /root/hrm/api/data/
+avatars/4e8666bb-a632-4a54-ba44-b2aa7a8bc37d/output/avatar_skinned.obj /root/hrm/api/data/avatars/4e866
+6bb-a632-4a54-ba44-b2aa7a8bc37d/output/avatar_skeleton.json /root/hrm/api/data/avatars/4e8666bb-a632-4a
+54-ba44-b2aa7a8bc37d/output/avatar_lbs_weights.npz /root/hrm/api/data/avatars/4e8666bb-a632-4a54-ba44-b
+2aa7a8bc37d/output/avatar_skinned.fbx - 1
+文件已经有了
+(base) root@ef6249f21343:~/hrm/api# ls assets/
+smplx_uv.obj
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户确认 assets 目录下已有 smplx_uv.obj 文件。日志显示 Blender FBX 导出命令路径中存在省略号。
+
+Blender 命令中的纹理参数为 `-`，说明未正确传入 avatar_diffuse.png 路径。smplx_uv.obj 已放入 api/assets/ 目录，理论上会被 `_candidate_uv_paths` 检测到，但纹理烘焙仍可能失败。需要排查纹理未正确传递的原因。
+
+正在排查纹理未正确传递的三种可能：烘焙静默失败、烘焙成功但未将路径传给导出脚本、或未同步最新代码。用户确认 smplx_uv.obj 文件确实存在。需要检查 mesh_export 中的执行顺序，确认该文件是否在烘焙阶段已存在，以及烘焙失败的具体原因。
+
+已确认代码中的路径解析逻辑正确，指向 api/assets/smplx_uv.obj。
+
+新的怀疑方向有两个：
+- smplx_uv.obj 可能缺少 UV 坐标行（vt），导致 parse_obj_uv 解析失败，trimesh 无法获取 UV 数据
+- smplx_uv.obj 的面数可能与 SMPL 网格不一致，导致烘焙匹配失败
+
+Blender 命令中的 `-` 表明 tex_for_fbx 为 None，说明纹理未正确生成。可能原因包括：FBX_BAKE_TEXTURE=false、烘焙失败，或 texture_path 未创建。
+
+官方 smplx_uv.obj 通常包含顶点坐标、UV 坐标和面数据，拓扑结构应与 SMPL-X 一致。若该文件缺少 UV 坐标行，或拓扑不匹配，烘焙就会失败。需要确认该文件是否包含有效的 vt 数据。
+
+用户可能需要重新运行导出流程才能生效。日志中的结果可能来自烘焙失败的旧运行，而非添加 smplx_uv.obj 后的新运行。需要确认该文件是否已正确部署到服务器。Blender 命令中的 `-` 证实纹理未被传入，必须修复 diffuse PNG 未生成或未传递的问题。
+
+计划修改 mesh_export_service，确保从 api/assets 正确加载 smplx_uv.obj，并补充从 api/assets 加载时的日志输出。同时需要修复 parse_obj_uv 函数，使其支持解析 `f v1/vt1/vn1` 格式的面数据。接下来将重新检查 texture_bake_service 中的候选 UV 路径和加载流程。</details></think>
+
+_**Agent (default)**_
+
+日志里 Blender 命令的贴图参数是 `-`（无贴图）。正在排查为何未使用 `api/assets/smplx_uv.obj` 并完成烘焙。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "fbx_bake_texture|FBX_BAKE"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "fbx_bake_texture|FBX_BAKE",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api\\.env.example"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\config.py"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 3
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+已定位到问题在 mesh_export_service.py 中。
+
+发现 mesh_export_service.py 中存在重复调用 load_smplx_uv 的问题。更可能的根本原因是 parse_obj_uv 对 uv_faces 与 faces 数量的严格匹配要求，以及官方 smplx_uv.obj 可能包含四边形面或非三角形顶点索引格式，导致解析失败。
+
+正在排查 bake 阶段的其他失败原因。怀疑是 bake_vertex_colors_to_texture 中 UV 数量与顶点数不匹配，导致 vi_geom 索引越界引发 IndexError。同时确认 smplx_uv.obj 文件确实存在于服务器上。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+Blender 命令中纹理仍显示 `-`，但 `smplx_uv.obj` </details></think>
