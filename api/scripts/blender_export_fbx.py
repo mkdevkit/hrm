@@ -327,8 +327,11 @@ def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
 
 
 def _apply_subdivision(mesh_obj: bpy.types.Object, levels: int) -> None:
+    """在绑 Armature 之前细分，避免 modifier 顺序警告。"""
     if levels <= 0:
         return
+    for mod in list(mesh_obj.modifiers):
+        mesh_obj.modifiers.remove(mod)
     bpy.context.view_layer.objects.active = mesh_obj
     mesh_obj.select_set(True)
     mod = mesh_obj.modifiers.new(name="Subsurf", type="SUBSURF")
@@ -394,7 +397,7 @@ def _export_fbx(fbx_path: Path, *, embed_textures: bool) -> None:
         add_leaf_bones=False,
         bake_anim=False,
         armature_nodetype="NULL",
-        mesh_smooth_type="Normals",
+        mesh_smooth_type="EDGE",
         path_mode="COPY",
         embed_textures=embed_textures,
     )
@@ -416,13 +419,13 @@ def main() -> None:
     _ensure_fbx_exporter()
 
     mesh_obj = _import_obj(obj_path)
+    _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
+    _apply_subdivision(mesh_obj, subdiv)
     joints = _resolve_joint_rest_positions(
         skel, joint_names, mesh_obj, rows, cols, flat_weights
     )
     arm_obj = _create_armature(joint_names, parents, joints)
-    _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
     _parent_mesh(mesh_obj, arm_obj)
-    _apply_subdivision(mesh_obj, subdiv)
     _prepare_mesh_for_export(mesh_obj, texture_path)
     _export_fbx(fbx_path, embed_textures=bool(texture_path and texture_path.is_file()))
     print(f"[HRM] FBX exported: {fbx_path}")

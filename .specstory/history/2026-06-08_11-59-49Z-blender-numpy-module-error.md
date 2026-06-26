@@ -14283,4 +14283,735 @@ _**Agent (default)**_
 
 确定了OBJ导出方案，包含顶点UV与纹理贴图。Blender脚本将导入UV、应用纹理、细分网格后导出嵌入纹理的FBX。新增配置项控制细分等级、纹理尺寸及烘焙来源。参考图像拟用于增强融合。
 
-已明确具体文件改动范围：新增纹理烘焙服务，更新网格导出与FBX导出模块以支持纹理传递和嵌入，同步调整配置项。针对SMPL-X UV坐标，计划通过多种属性名回退读取，或从human_model_files中的smplx obj加载。</details></think>
+已明确具体文件改动范围：新增纹理烘焙服务，更新网格导出与FBX导出模块以支持纹理传递和嵌入，同步调整配置项。针对SMPL-X UV坐标，计划通过多种属性名回退读取，或从human_model_files中的smplx obj加载。
+
+已确定SMPL-X UV的具体读取路径：优先从human_model_files中的smplx_uv.obj或npz文件提取，其次尝试trimesh加载模板。OBJ输出格式将采用`v`、`vt`、`f`三段式结构。同时开始设计UV空间的光栅化算法。
+
+正在实现`bake_vertex_colors_to_texture`函数，通过逐三角形遍历将顶点颜色光栅化到纹理图。确认SMPL-X UV拓扑通常与几何面一致，且每顶点UV索引与顶点一一对应。同时确定了高斯颜色的标准化转换公式：RGB = 0.5 + 0.28209479177387814 × [f_dc_0, f_dc_1, f_dc_2]。
+
+确定了高斯颜色的标准化转换公式：RGB = 0.5 + 0.28209479177387814 × [f_dc_0, f_dc_1, f_dc_2]，并加入0到1的裁剪。计划使用plyfile库读取PLY中的f_dc字段，并考虑增加透明度过滤。Blender无头模式下的细分逻辑将通过SubSurf修改器实现，随后应用修改器生成最终网格。
+
+确认了细分后的顶点组仍可驱动骨骼动画。Blender脚本将新建纹理节点并连接BSDF材质，使FBX导出时嵌入纹理文件。
+
+决定扩展Blender脚本参数列表至6个可选位置，新增纹理路径与细分等级参数。若纹理路径为空则跳过处理。导出接口将同步更新以接收这两个新参数。Mock模式下会生成简单渐变纹理作为替代。
+
+参考图像的前端投影混合将延至第二阶段，当前优先完成高斯着色烘焙。针对SMPL-X UV坐标，补充了本地LHM不可用时的多级回退策略：依次尝试layer.bm_x的vtx_uv、texcoords、uv等属性，或从human_model_files中搜索smplx.obj及uv相关obj文件。同时计划扩展_load_smplx_mesh的返回值，使其能携带UV数据。</details></think>
+
+_**Agent (default)**_
+
+实现从 3DGS 烘焙 diffuse 贴图、SMPL-X UV 导出，并在 Blender 中支持细分高模与贴图嵌入 FBX。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+准备创建 texture_bake_service.py 来实现纹理烘焙功能。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\requirements.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+已确认 Pillow、plyfile、scipy 和 trimesh 均可用。
+
+正在从 human_model 目录中搜索 SMPL-X 的 .obj 文件以提取 UV 数据。计划遍历候选路径并解析其中的顶点与面片信息。同时也在考虑 Blender 中可能存在的 faces_uv 或 ft 属性。
+
+正在尝试从 Blender 模型层直接读取 UV 数据，优先检查 `vtx_uv` 与 `texcoords` 属性。同时准备用 trimesh 加载模板 .obj 文件作为参考。关于参考图像的处理，决定将高斯球面调和烘焙作为主流程，参考图仅用于填充未着色的 UV 区域。
+
+放弃复杂的参考图投影方案，改用基于 UV 的光栅化渲染。计划实现一个基于 NumPy 重心坐标的函数，将顶点颜色映射到 UV 纹理空间并生成最终图像。
+
+正在编写 UV 光栅化函数的具体实现。将 UV 坐标转换为像素坐标，并对三角形做包围盒裁剪。接下来会遍历包围盒内的像素，通过重心坐标判断是否落在三角形内部，从而完成颜色映射。
+
+UV 光栅化完成后，将用 OpenCV 对纹理图中的孔洞进行修复。同时正在实现从高斯模型采样顶点颜色的函数：通过 KDTree 查询最近邻高斯点，按距离加权平均得到每个顶点的颜色值。
+
+正在编写从 .ply 高斯文件读取 RGB 数据的函数。优先解析 f_dc_0/1/2 字段并转换为线性 RGB；若不存在则回退到 red/green/blue 通道。
+
+正在调整 Blender 脚本的参数解析逻辑，改为接收六个命令行参数：模型、骨骼、权重、FBX 导出路径、纹理路径（可选）以及细分级别（可选）。同时开始编写 `_apply_subdivision` 函数，用于在 Blender 中对网格对象执行细分操作。
+
+已完成 `_apply_subdivision` 函数的具体实现：添加 Subsurf 修改器并应用，保留顶点组分配。确定了 Blender 导出脚本的完整执行顺序：导入模型、解析关节、分配顶点组、绑定父级、细分网格、准备纹理或默认材质、最后导出 FBX 并嵌入资源。</details></think>
+
+_**Agent (default)**_
+
+正在实现：从 3DGS 烘焙 UV 贴图、Blender 细分高模，并将贴图嵌入 FBX。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在修复 UV 映射问题：当 UV 数组长度与网格顶点数不匹配时，需要处理该情况。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "mesh_fbx_path|mesh_texture"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "mesh_fbx_path|mesh_texture",
+  "topFiles": [
+    {
+      "matchCount": 4,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\routers\\avatars.py"
+    }
+  ],
+  "totalFiles": 2,
+  "totalMatches": 5
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在读取 .env.example 并添加配置，随后运行 py_compile 检查语法。
+
+修正了 page.tsx 中关于烘焙纹理的提示。同时确认了顶点颜色索引与 UV 面片索引在共享拓扑时的一致性，确保渲染正确。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\web\src\app\page.tsx</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\i18n.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\i18n.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py" "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py" "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+已实现 **3DGS → UV 贴图烘焙 + Blender 细分高模 + 贴图嵌入 FBX** 的完整导出管线。
+
+### 新流程
+
+```
+avatar.ply (3DGS 颜色 SH)
+    ↓ 最近邻插值到 SMPL-X 顶点
+    ↓ 光栅化到 SMPL-X UV → avatar_diffuse.png (2048²)
+avatar_skinned.obj (含 UV)
+    ↓ Blender：绑骨 → 细分曲面 → 绑定贴图 → 导出 FBX（embed_textures）
+avatar_skinned.fbx（带 diffuse + 更高面数）
+```
+
+### 配置（`api/.env`）
+
+```env
+FBX_BAKE_TEXTURE=true      # 从 3DGS 烘焙 UV 贴图
+FBX_TEXTURE_SIZE=2048      # 贴图分辨率
+FBX_SUBDIVISION_LEVELS=1   # 0=低模(~2万面) 1≈4×面 2≈16×面
+```
+
+### 输出文件
+
+| 文件 | 说明 |
+|------|------|
+| `avatar_diffuse.png` | 从 3DGS 烘焙的 diffuse |
+| `avatar_skinned.fbx` | **贴图已嵌入** + 细分后的蒙皮网格 |
+| `avatar_skinned.obj` | 带 UV 的中间产物 |
+
+### 你需要做的
+
+1. 同步代码到服务器（尤其 `texture_bake_service.py`、`mesh_export_service.py`、`blender_export_fbx.py`）
+2. 在 `.env` 中设置上述三项（或使用默认值）
+3. **重新创建 Avatar** 并勾选「导出蒙皮网格」（旧 FBX 不会自动补贴图）
+
+### 说明与预期
+
+- 贴图来自 **3DGS 球谐颜色** 投影到 SMPL-X UV，能反映整体服装/肤色，**不是**参考图照片级纹理
+- 细分在 Blender 里用 **Subdivision Surface** 提高平滑度，仍基于 SMPL-X 拓扑
+- 若日志出现「UV 贴图烘焙失败」，请确认 `LHM_ROOT/pretrained_models/human_model_files` 下有 SMPL-X UV（`smplx*.obj` 或模型内 `vtx_uv` 字段）
+- 要更高面数：`FBX_SUBDIVISION_LEVELS=2`（导出更慢、FBX 更大）
+
+在 3dviewer 中重新打开新生成的 FBX，应能看到烘焙颜色且表面更平滑。若 UV 烘焙失败，把 API 日志里相关报错贴出来即可继续排查。
+
+---
+
+_**User**_
+
+Blender 4.0.2
+OBJ import of 'avatar_skinned.obj' took 12.9 ms
+Info: Applied modifier was not first, result may not be as expected
+[HRM] 细分曲面 Level 1 已应用
+[HRM] FBX export failed: Converting py args to operator properties:  enum "Normals" not found in ('OFF'
+, 'FACE', 'EDGE')
+Traceback (most recent call last):
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 433, in <module>
+    main()
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 427, in main
+    _export_fbx(fbx_path, embed_textures=bool(texture_path and texture_path.is_file()))
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 390, in _export_fbx
+    result = bpy.ops.export_scene.fbx(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/blender/scripts/modules/bpy/ops.py", line 109, in __call__
+    ret = _op_call(self.idname_py(), kw)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Converting py args to operator properties:  enum "Normals" not found in ('OFF', 'FACE', 'EDG
+E')
+
+---
+
+_**Agent (default)**_
+
+Blender 4.0.2 的 FBX 导出器不支持 `mesh_smooth_type="Normals"`，且细分 modifier 顺序也有问题。正在修复这两处。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The FBX export fails because `mesh_smooth_type` is set to `"Normals"`, which Blender does not accept. Changing it to `"EDGE"` or `"OFF"` resolves the error.
+
+The script needs reordering. Subdivision must be applied before armature parenting. Vertex groups must be assigned before applying the subsurf modifier. The armature modifier should be added only after subdivision is fully applied.</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
