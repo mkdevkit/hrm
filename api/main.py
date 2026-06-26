@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from config import settings
 from routers import avatars, stream
 from services.lhmpp_service import lhmpp_service
+from services.blender_fbx_export import blender_available, blender_fbx_ready
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +45,12 @@ async def lifespan(_app: FastAPI):
             log.warning("PRELOAD_MODEL=true 但 LHM_ROOT 不可用，跳过模型预加载")
         else:
             await asyncio.to_thread(lhmpp_service.initialize)
+
+    if blender_available() and not blender_fbx_ready():
+        log.warning(
+            "Blender 已安装但 FBX 导出缺少 numpy。"
+            " 请执行: sudo apt install -y python3-numpy"
+        )
 
     yield
 

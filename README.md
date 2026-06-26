@@ -660,11 +660,12 @@ HRM 不需要 Blender GUI，也**没有**单独的 headless 安装包；安装�
 
 ```bash
 sudo apt update
-sudo apt install -y blender
+sudo apt install -y blender python3-numpy
 
 # 验证版本与 headless Python 环境
 blender --version
 blender --background --python-expr "import bpy; print('ok')"
+blender --background --python-use-system-env --python-expr "import numpy; print('ok')"
 ```
 
 最后一行应输出 `ok`。若 `blender` 不在默认路径，用 `which blender` 查看实际路径并写入 `BLENDER_EXECUTABLE`。

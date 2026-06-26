@@ -11,12 +11,65 @@ import ast
 import array
 import json
 import struct
+import subprocess
 import sys
 import traceback
 import zipfile
 from pathlib import Path
 
 import bpy
+
+
+def _ensure_numpy() -> None:
+    """Blender 自带 Python 与 io_scene_fbx 插件均依赖 numpy（apt 包通常未内置）。"""
+    try:
+        import numpy as np  # noqa: F401
+
+        return
+    except ModuleNotFoundError:
+        pass
+
+    ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+    for path in (
+        "/usr/lib/python3/dist-packages",
+        f"/usr/local/lib/python{ver}/dist-packages",
+        f"/usr/lib/python{ver}/site-packages",
+    ):
+        if Path(path).is_dir() and path not in sys.path:
+            sys.path.insert(0, path)
+
+    try:
+        import numpy as np  # noqa: F401
+
+        print("[HRM] 已从系统路径加载 numpy", file=sys.stderr)
+        return
+    except ModuleNotFoundError:
+        pass
+
+    print("[HRM] Blender 缺少 numpy，正在用 pip 安装...", file=sys.stderr)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "ensurepip", "--user"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "numpy"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        import numpy as np  # noqa: F401
+
+        print("[HRM] numpy 安装完成", file=sys.stderr)
+        return
+    except Exception as exc:
+        raise RuntimeError(
+            "Blender FBX 插件需要 numpy。请执行: "
+            "sudo apt install -y python3-numpy "
+            "或 blender --background --python-use-system-env --python-expr "
+            "\"import subprocess,sys; subprocess.check_call([sys.executable,'-m','pip','install','numpy'])\""
+        ) from exc
 
 
 def _parse_args() -> tuple[Path, Path, Path, Path]:
@@ -267,6 +320,7 @@ def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
 
 
 def _export_fbx(fbx_path: Path) -> None:
+    _ensure_numpy()
     _ensure_fbx_exporter()
     fbx_path = fbx_path.resolve()
     fbx_path.parent.mkdir(parents=True, exist_ok=True)

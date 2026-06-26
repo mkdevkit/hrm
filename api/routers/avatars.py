@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from config import settings
-from services.blender_fbx_export import blender_available
+from services.blender_fbx_export import blender_available, blender_fbx_ready
 from services.job_manager import JobManager, JobStatus
 from services.lhmpp_service import _cap_ref_view, lhmpp_service
 from services.motion_service import motion_service
@@ -63,6 +63,7 @@ def health() -> dict[str, Any]:
         "infer_anim_batch_size": settings.effective_infer_anim_batch_size,
         "infer_dense_sample_pts": settings.effective_infer_dense_sample_pts,
         "blender_available": blender_available(),
+        "blender_fbx_ready": blender_fbx_ready(),
     }
 
 

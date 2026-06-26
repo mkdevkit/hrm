@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +13,26 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "blender_export_fbx.py"
+
+
+def _system_numpy_paths() -> list[str]:
+    candidates = [
+        "/usr/lib/python3/dist-packages",
+        "/usr/local/lib/python3.10/dist-packages",
+        "/usr/local/lib/python3.11/dist-packages",
+        "/usr/local/lib/python3.12/dist-packages",
+    ]
+    return [p for p in candidates if Path(p).is_dir()]
+
+
+def _blender_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    extra = _system_numpy_paths()
+    if extra:
+        current = env.get("PYTHONPATH", "")
+        merged = os.pathsep.join(extra + ([current] if current else []))
+        env["PYTHONPATH"] = merged
+    return env
 
 
 def _log_blender_output(proc: subprocess.CompletedProcess[str], reason: str) -> None:
@@ -38,6 +59,31 @@ def resolve_blender_executable() -> str | None:
 
 def blender_available() -> bool:
     return resolve_blender_executable() is not None
+
+
+def blender_fbx_ready() -> bool:
+    """Blender 可用且 FBX 插件能 import numpy（apt 版 Blender 常缺此项）。"""
+    blender = resolve_blender_executable()
+    if not blender:
+        return False
+    try:
+        proc = subprocess.run(
+            [
+                blender,
+                "--background",
+                "--python-use-system-env",
+                "--python-expr",
+                "import numpy; import bpy; print('ok')",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=_blender_subprocess_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0 and "ok" in (proc.stdout or "")
 
 
 def export_skinned_fbx(
@@ -77,6 +123,7 @@ def export_skinned_fbx(
     cmd = [
         blender,
         "--background",
+        "--python-use-system-env",
         "--python",
         str(_SCRIPT_PATH),
         "--",
@@ -94,6 +141,7 @@ def export_skinned_fbx(
             text=True,
             timeout=timeout_sec,
             check=False,
+            env=_blender_subprocess_env(),
         )
     except subprocess.TimeoutExpired:
         logger.error("Blender FBX 导出超时 (%ds)", timeout_sec)

@@ -5693,4 +5693,346 @@ _**Agent (default)**_
 <think><details><summary>Thought Process</summary>
 旧任务的 skeleton.json 缺少 joint_rest_positions 字段。
 
-计划在 blender_export_fbx.py 中添加回退逻辑。若 skeleton.json 缺少 joint_rest_positions，将从 OBJ 顶点和权重推算关节位置，并记录警告。</details></think>
+计划在 blender_export_fbx.py 中添加回退逻辑。若 skeleton.json 缺少 joint_rest_positions，将从 OBJ 顶点和权重推算关节位置，并记录警告。
+
+考虑在 mesh_export_service 或 blender_fbx_export 中导出时自动升级 skeleton.json。
+
+更优方案是调整 Blender 脚本执行顺序：先导入 OBJ 获取顶点，再加载权重，最后根据顶点与权重估计关节位置并创建骨架。这样无需手动解析 OBJ 文件。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "glob": "*.py",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "_write_skeleton_json|weights_sparse|version.*1"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "_write_skeleton_json|weights_sparse|version.*1",
+  "topFiles": [
+    {
+      "matchCount": 4,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/main.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\main.py"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 6
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将在 blender_export_fbx.py 中实现回退逻辑。
+
+计划调整主函数顺序，先导入OBJ并加载权重。若 skeleton.json 缺少 joint_rest_positions 或长度错误，则根据网格顶点与权重估算该字段，并向标准输出打印警告。同时考虑在 mesh_export_service 或 blender_fbx_export 中增加修复函数，用于 API 调用时自动修补 skeleton.json。
+
+API 层级的自动修复并非必需，仅 Blender 端回退已足够。正在编写 `_estimate_joint_rest_positions` 函数，将从导入后的 mesh 对象中提取顶点坐标，并结合权重数据反推关节 rest positions。
+
+已完成 `_estimate_joint_rest_positions` 的具体实现：遍历每个关节，对所有非零权重的顶点按权重加权平均其坐标，得到该关节的 rest position。接下来准备在 `main` 函数中接入该回退逻辑。
+
+已在 `main` 函数中接入回退逻辑。先加载权重文件并清空 Blender 场景，随后导入 OBJ 并读取 skeleton.json 中的 joint_rest_positions。若该字段缺失或长度不匹配，则从网格顶点与 LBS 权重反推关节 rest positions，并向 stderr 输出警告。
+
+也在考虑在 Python API 层新增修复函数，直接修补 skeleton.json 文件本身，使旧版本格式能被自动升级。
+
+决定在调用 Blender 之前，由 API 进程直接修复 skeleton.json。将新增 `_ensure_skeleton_joint_positions` 函数：若 joint_rest_positions 缺失或长度不匹配，则从 OBJ 顶点与权重反推关节位置并写回文件，同时将 version 升级为 2。这样 Blender 端无需额外依赖 numpy，也能保证导出前数据完整。
+
+确认采用双层修复方案：Blender 脚本内增加回退逻辑以应对手动运行；API 层在调用 Blender 前永久修补 skeleton.json。正在评估 mesh_export_service 中是否已有现成的 OBJ 读取能力，以便在 Python API 中直接解析顶点坐标。</details></think>
+
+_**Agent (default)**_
+
+旧版 `skeleton.json` 缺少 `joint_rest_positions`。我会在 API 侧自动补全，并在 Blender 脚本里加回退估算。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+计划在 mesh_export_service.py 中添加 `_read_obj_vertices` 和 `ensure_skeleton_rest_positions`，以修复 skeleton.json 缺失 joint_rest_positions 的问题。
+
+需要在 blender_fbx_export.py 中调用该函数并添加回退逻辑。由于 mesh_export_service.py 已导入 blender_fbx_export.py，不能让后者反向导入前者，否则会产生循环依赖。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py" "D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py" "D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+修复误合并导致的 `_parent_mesh` 函数损坏。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**原因**：该 Avatar 是在 HRM 加入 `joint_rest_positions`（skeleton v2）之前生成的，旧版 `avatar_skeleton.json` 只有 `joint_names` / `parents`，没有关节 T-pose 位置，Blender 脚本无法建骨骼。
+
+**已修复**（两层兜底）：
+
+1. **API 侧**（`blender_fbx_export.py`）：调用 Blender 前自动用 `OBJ + LBS 权重` 补全 `joint_rest_positions` 并写回 `avatar_skeleton.json`。
+2. **Blender 脚本侧**：若 JSON 仍缺该字段，从已导入的 OBJ 网格 + 权重现场估算，不再直接报错退出。
+
+### 你需要做的
+
+把以下文件同步到服务器 `/root/hrm/` 后，**直接重试 FBX 导出**（不必重新跑 3D 重建）：
+
+- `api/scripts/blender_export_fbx.py`
+- `api/services/blender_fbx_export.py`
+- `api/services/mesh_export_service.py`
+
+手动验证：
+
+```bash
+blender --background --python /root/hrm/api/scripts/blender_export_fbx.py -- \
+  /path/to/avatar_skinned.obj \
+  /path/to/avatar_skeleton.json \
+  /path/to/avatar_lbs_weights.npz \
+  /path/to/avatar_skinned.fbx
+```
+
+旧 skeleton 会看到类似提示（正常）：
+
+```
+[HRM] skeleton.json 无 joint_rest_positions，从 OBJ 顶点 + LBS 权重估算关节位置
+[HRM] FBX exported: ...
+```
+
+**说明**：估算的关节位置来自蒙皮网格顶点加权，足够用于 FBX 绑骨；若要与 SMPL-X 标准 T-pose 完全一致，可对该 Avatar 重新勾选「导出蒙皮网格」再生成一次。
+
+---
+
+_**User**_
+
+Blender 4.0.2
+OBJ import of 'avatar_skinned.obj' took 10.5 ms
+Error: Python: Traceback (most recent call last):
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/__init__.py", line 662, in execute
+    from . import export_fbx_bin
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/export_fbx_bin.py", line 8, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+Location: /usr/share/blender/scripts/modules/bpy/ops.py:109
+Traceback (most recent call last):
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/__init__.py", line 662, in execute
+    from . import export_fbx_bin
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/export_fbx_bin.py", line 8, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+[HRM] FBX export failed: Error: Python: Traceback (most recent call last):
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/__init__.py", line 662, in execute
+    from . import export_fbx_bin
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/export_fbx_bin.py", line 8, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+Location: /usr/share/blender/scripts/modules/bpy/ops.py:109
+
+Traceback (most recent call last):
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 312, in <module>
+    main()
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 306, in main
+    _export_fbx(fbx_path)
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 273, in _export_fbx
+    result = bpy.ops.export_scene.fbx(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/share/blender/scripts/modules/bpy/ops.py", line 109, in __call__
+    ret = _op_call(self.idname_py(), kw)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Error: Python: Traceback (most recent call last):
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/__init__.py", line 662, in execute
+    from . import export_fbx_bin
+  File "/usr/share/blender/scripts/addons/io_scene_fbx/export_fbx_bin.py", line 8, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+Location: /usr/share/blender/scripts/modules/bpy/ops.py:109
+INFO:     123.90.5.81:7983 - "GET /api/v1/jobs/4d1821d8-ddb6-4d91-ab72-432d6e9276e8 HTTP/1.1" 200 OK
+INFO:     123.90.5.81:8000 - "GET /api/v1/avatars/c8ce74ef-6345-418c-9f77-3c3f8bf2cec7/preview HTTP/1.1
+" 200 OK
+
+INFO:     123.90.5.81:8045 - "GET /api/v1/jobs/bb5b
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+Blender's built-in FBX exporter plugin (`io_scene_fbx`) failed to load because `numpy` is missing. This is separate from the HRM Blender script issue.
+
+Apt-installed Blender 4.0.2 on Linux lacks numpy. Options include switching to glTF or COLLADA export, installing numpy into Blender's Python, or using an alternative Blender build.
+
+Alternative exporters like glTF, Assimp, or pyfbx could bypass the numpy dependency entirely. For server deployment, the cleanest fix is to detect the missing numpy module inside the Blender export script and bootstrap it automatically before attempting FBX export.
+
+Prepending the system numpy path to Blender's Python `sys.path` could resolve the missing module without a full reinstall. The plan is to modify `blender_export_fbx.py` to inject the system numpy location before `_export_fbx` runs. A README note documenting this workaround is also being considered.
+
+Two concrete implementation paths are now under consideration. One </details></think>
