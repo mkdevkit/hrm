@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""对已有 avatar output 目录重烘焙 3DGS 贴图并重新导出 FBX。"""
+"""对已有 avatar output 重新导出 FBX。"""
 
 from __future__ import annotations
 
@@ -15,12 +15,6 @@ API_ROOT = Path(__file__).resolve().parents[1]
 def _bootstrap_paths() -> None:
     if str(API_ROOT) not in sys.path:
         sys.path.insert(0, str(API_ROOT))
-    from config import settings
-
-    if settings.lhm_root:
-        lhm = Path(settings.lhm_root).resolve()
-        if lhm.is_dir() and str(lhm) not in sys.path:
-            sys.path.insert(0, str(lhm))
 
 
 def main() -> int:
@@ -29,23 +23,31 @@ def main() -> int:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     _bootstrap_paths()
-    parser = argparse.ArgumentParser(description="重烘焙 avatar_diffuse.png 并导出 avatar_skinned.fbx")
+    parser = argparse.ArgumentParser(description="重新导出 avatar.fbx")
+    parser.add_argument("output_dir", type=Path, help="avatar output 目录（含 avatar.ply）")
+    parser.add_argument("--ply", type=Path, default=None, help="PLY 路径（默认 output_dir/avatar.ply）")
     parser.add_argument(
-        "output_dir",
-        type=Path,
-        help="avatar output 目录（含 avatar_skinned.obj、avatar_lbs_weights.npz）",
-    )
-    parser.add_argument(
-        "--ply",
-        type=Path,
+        "--backend",
+        choices=("poisson", "sugar", "legacy_smpl"),
         default=None,
-        help="3DGS PLY 路径（默认在 output 或上级目录查找 avatar.ply）",
+        help="覆盖 MESH_EXPORT_BACKEND",
     )
     args = parser.parse_args()
 
-    from services.mesh_export_service import rebake_skinned_mesh_from_output_dir
+    output_dir = args.output_dir.resolve()
+    ply = args.ply or (output_dir / "avatar.ply")
+    if not ply.is_file():
+        print(f"缺少 PLY: {ply}", file=sys.stderr)
+        return 1
 
-    result = rebake_skinned_mesh_from_output_dir(args.output_dir, ply_path=args.ply)
+    if args.backend:
+        from config import settings
+
+        settings.mesh_export_backend = args.backend
+
+    from services.mesh_export_facade import export_fbx_from_gaussian
+
+    result = export_fbx_from_gaussian(ply, output_dir)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("mesh_fbx_path") else 1
 

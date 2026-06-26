@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     # 可选：SMPL-X 官方 smplx_uv.obj（human_model_files 无 UV 时手动指定）
     smplx_uv_obj: str = ""
 
+    # FBX 导出后端：poisson=Open3D泊松+烘焙+Blender | sugar=SuGaR全库 | legacy_smpl=旧SMPL蒙皮
+    mesh_export_backend: str = "poisson"
+    # Poisson 重建（poisson 后端）
+    poisson_depth: int = 9
+    poisson_density_quantile: float = 0.02
+    poisson_max_points: int = 80000
+    poisson_normal_radius: float = 0.04
+    # SuGaR 全库方案（mesh_export_backend=sugar 时）
+    sugar_root: str = ""
+    sugar_python: str = ""
+    sugar_timeout_sec: int = 3600
+    sugar_blender_timeout_sec: int = 600
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = "http://localhost:3000"

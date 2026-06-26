@@ -9,7 +9,6 @@ import {
   modelUrl,
   skinnedMeshUrl,
   meshViewerUrl,
-  skeletonUrl,
   pollJob,
   previewUrl,
   wsMotionUrl,
@@ -72,7 +71,7 @@ export default function HomePage() {
       const { avatar_id, job_id } = await createAvatar(images, refView, exportSkinnedMesh);
       setAvatarId(avatar_id);
       const finalJob = await pollJob(job_id, setJob);
-      setHasSkinnedMesh(exportSkinnedMesh && !!finalJob.result?.skeleton_json_path);
+      setHasSkinnedMesh(exportSkinnedMesh && !!finalJob.result?.mesh_fbx_path);
       setHasFbx(exportSkinnedMesh && !!finalJob.result?.mesh_fbx_path);
       setStep("ready");
     } catch (e) {
@@ -241,10 +240,11 @@ export default function HomePage() {
             onChange={(e) => setExportSkinnedMesh(e.target.checked)}
             style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
           />
-          同时导出 SMPL-X 蒙皮网格（FBX + 骨骼 JSON，含 55 关节 LBS）
+          同时导出 FBX（泊松重建 + 3DGS 烘焙，默认；可选 SuGaR 全库）
         </label>
         <p className="hint">
-          开启后除 Gaussian PLY 外，还会生成 Unity/Maya 可用的蒙皮 FBX 与骨骼 JSON（需服务器安装 Blender）。
+          开启后除 PLY 外生成 FBX：默认 Open3D 泊松网格 + 贴图烘焙 + Blender 导出。
+          服务器可设 MESH_EXPORT_BACKEND=sugar 改用 SuGaR 全库方案。
         </p>
         {step === "upload" && (
           <button className="btn" onClick={startReconstruct} disabled={!images.length}>
@@ -292,16 +292,13 @@ export default function HomePage() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        预览蒙皮 FBX
+                        预览 FBX
                       </a>
                       <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "fbx")} download>
-                        下载蒙皮 FBX
+                        下载 FBX
                       </a>
                     </>
                   )}
-                  <a className="btn btn-secondary" href={skeletonUrl(avatarId)} download>
-                    下载 SMPL-X 骨骼 JSON
-                  </a>
                 </div>
               )}
               <p className="hint" style={{ marginTop: "0.75rem" }}>
@@ -309,12 +306,12 @@ export default function HomePage() {
                 <a href="https://toolpow.com/zh/tools/3dgs" target="_blank" rel="noreferrer">
                   3DGS 查看器
                 </a>
-                预览；FBX 可用{" "}
+                预览；FBX 为泊松重建 + 烘焙网格，可用{" "}
                 <a href="http://localhost:5175" target="_blank" rel="noreferrer">
                   3D 模型查看器
                 </a>
-                预览（含 3DGS 烘焙贴图 + 细分高模），或导入 Unity / Maya。
-                {hasSkinnedMesh && !hasFbx && " FBX 未生成，请确认 API 服务器已安装 Blender。"}
+                预览或导入 Unity / Maya。
+                {hasSkinnedMesh && !hasFbx && " FBX 未生成，请确认 Blender 已安装（sugar 后端还需 SUGAR_ROOT）。"}
               </p>
             </div>
           </div>

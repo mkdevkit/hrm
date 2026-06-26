@@ -210,9 +210,9 @@ class LHMPPService:
                 "mock": True,
             }
             if export_skinned_mesh:
-                from services.mesh_export_service import export_skinned_mesh_from_gaussian
+                from services.mesh_export_facade import export_fbx_from_gaussian
 
-                mesh_result = export_skinned_mesh_from_gaussian(ply_path, output_dir)
+                mesh_result = export_fbx_from_gaussian(ply_path, output_dir)
                 result.update(mesh_result)
             return result
 
@@ -345,13 +345,14 @@ class LHMPPService:
         }
 
         if export_skinned_mesh:
-            from services.mesh_export_service import export_skinned_mesh_from_gaussian
+            from services.mesh_export_facade import export_fbx_from_gaussian
 
-            mesh_result = export_skinned_mesh_from_gaussian(
+            mesh_result = export_fbx_from_gaussian(
                 ply_out,
                 output_dir,
+                lhm_root=root,
+                ref_image_dir=image_glob_dir if image_glob_dir.is_dir() else None,
                 betas=betas_list,
-                lhm_root=str(root),
             )
             result.update(mesh_result)
 

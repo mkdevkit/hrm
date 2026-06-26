@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 
 from config import settings
 from services.blender_fbx_export import blender_available, blender_fbx_ready
+from services.sugar_export_service import sugar_available
 from services.job_manager import JobManager, JobStatus
 from services.lhmpp_service import _cap_ref_view, lhmpp_service
 from services.motion_service import motion_service
@@ -64,6 +65,8 @@ def health() -> dict[str, Any]:
         "infer_dense_sample_pts": settings.effective_infer_dense_sample_pts,
         "blender_available": blender_available(),
         "blender_fbx_ready": blender_fbx_ready(),
+        "sugar_available": sugar_available(),
+        "mesh_export_backend": settings.mesh_export_backend,
     }
 
 
@@ -106,7 +109,11 @@ async def create_avatar(
             export_skinned_mesh=export_skinned_mesh,
         )
         if export_skinned_mesh:
-            job_manager.update(job.id, progress=70, message="正在导出 SMPL-X 蒙皮 FBX...")
+            job_manager.update(
+                job.id,
+                progress=65,
+                message=f"正在导出 FBX（{settings.mesh_export_backend}）...",
+            )
         job_manager.update(job.id, progress=90, result=result)
         meta.update({"status": "ready", "job_id": job.id, **result})
         _save_meta(avatar_id, meta)
@@ -146,26 +153,46 @@ def download_mesh_texture(avatar_id: str):
 
 
 @router.get("/avatars/{avatar_id}/mesh")
-def download_skinned_mesh(avatar_id: str, format: str = "fbx"):
+def download_skinned_mesh(avatar_id: str, format: str = "fbx", pipeline: str = "sugar"):
+    """下载网格 FBX/OBJ。默认 SuGaR 泊松重建产物；pipeline=legacy_smpl 为旧 SMPL 蒙皮（若存在）。"""
     meta = _load_meta(avatar_id)
     fmt = format.lower()
+    pipe = pipeline.lower()
+
+    if pipe in ("legacy_smpl", "smpl"):
+        if fmt == "fbx":
+            path = meta.get("mesh_smpl_fbx_path") or meta.get("mesh_fbx_path")
+            filename = "avatar_skinned.fbx"
+        elif fmt == "obj":
+            path = meta.get("mesh_smpl_obj_path") or meta.get("mesh_obj_path")
+            filename = "avatar_skinned.obj"
+        else:
+            raise HTTPException(400, "legacy_smpl 的 format 仅支持 fbx、obj")
+        if not path or not Path(path).exists():
+            raise HTTPException(404, "旧版 SMPL 蒙皮网格不存在")
+        media = "application/octet-stream" if fmt == "fbx" else "text/plain"
+        return FileResponse(path, filename=filename, media_type=media)
+
     if fmt == "fbx":
-        path = meta.get("mesh_fbx_path")
-        filename = "avatar_skinned.fbx"
+        path = meta.get("mesh_fbx_path") or meta.get("mesh_sugar_fbx_path")
+        filename = "avatar.fbx"
         media = "application/octet-stream"
     elif fmt == "obj":
-        path = meta.get("mesh_obj_path")
-        filename = "avatar_skinned.obj"
+        path = meta.get("mesh_obj_path") or meta.get("mesh_sugar_obj_path")
+        filename = "avatar.obj"
         media = "text/plain"
+    elif fmt == "ply":
+        path = meta.get("mesh_sugar_ply_path")
+        filename = "avatar_refined.ply"
+        media = "application/octet-stream"
     else:
-        raise HTTPException(400, "format 仅支持 fbx 或 obj")
+        raise HTTPException(400, "format 支持 fbx、obj、ply")
+
     if not path or not Path(path).exists():
-        if fmt == "fbx":
-            raise HTTPException(
-                404,
-                "蒙皮 FBX 尚未生成。请开启「导出蒙皮网格」并确认服务器已安装 Blender（BLENDER_EXECUTABLE）",
-            )
-        raise HTTPException(404, "蒙皮网格尚未生成，请开启「导出蒙皮网格」开关")
+        raise HTTPException(
+            404,
+            "FBX 尚未生成。请开启「导出网格/FBX」并配置 SUGAR_ROOT + Blender",
+        )
     return FileResponse(path, filename=filename, media_type=media)
 
 
