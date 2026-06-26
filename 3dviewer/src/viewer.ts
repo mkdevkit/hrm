@@ -65,9 +65,13 @@ function isUntexturedDefault(material: THREE.Material): boolean {
 
 function createUnlitTextureMaterial(map: THREE.Texture): THREE.MeshBasicMaterial {
   map.colorSpace = THREE.SRGBColorSpace;
+  map.minFilter = THREE.LinearFilter;
+  map.magFilter = THREE.LinearFilter;
+  map.generateMipmaps = false;
   return new THREE.MeshBasicMaterial({
     map,
     toneMapped: false,
+    transparent: false,
   });
 }
 
@@ -311,6 +315,11 @@ export class ModelViewer {
     }
 
     this.setModel(root, animations, displayName);
+    if (modelHasDiffuseMap(root)) {
+      this.renderer.toneMapping = THREE.NoToneMapping;
+    } else {
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    }
     return { root, animations, displayName };
   }
 

@@ -433,7 +433,20 @@ def apply_gaussian_displacement(
         dists = dists[:, None]
         indices = indices[:, None]
 
-    if mode == "max":
+    if mode in ("gs_target", "target", "fit"):
+        weights = 1.0 / (np.power(dists, sharpness) + 1e-8)
+        weights /= weights.sum(axis=1, keepdims=True)
+        targets = (gaussian_xyz[indices] * weights[..., None]).sum(axis=1)
+        vert_disp = targets - mesh_verts
+        vert_cap = settings.fbx_max_vertex_move
+        if vert_cap > 0:
+            vnorms = np.linalg.norm(vert_disp, axis=1, keepdims=True)
+            vert_disp = np.where(
+                vnorms > vert_cap,
+                vert_disp * (vert_cap / (vnorms + 1e-8)),
+                vert_disp,
+            )
+    elif mode == "max":
         disp_neighbors = displacement[indices]
         best = np.argmax(np.linalg.norm(disp_neighbors, axis=2), axis=1)
         vert_disp = disp_neighbors[np.arange(len(mesh_verts)), best]
@@ -445,14 +458,32 @@ def apply_gaussian_displacement(
         weights /= weights.sum(axis=1, keepdims=True)
         vert_disp = (displacement[indices] * weights[..., None]).sum(axis=1)
 
+    out = mesh_verts + vert_disp * settings.fbx_displacement_blend
+
+    shell_blend = settings.fbx_gs_shell_blend
+    if shell_blend > 0:
+        gtree = cKDTree(gaussian_xyz)
+        gk = min(4, len(gaussian_xyz))
+        gdists, gidx = gtree.query(out, k=gk)
+        if gk == 1:
+            gdists = gdists[:, None]
+            gidx = gidx[:, None]
+        gw = 1.0 / (gdists + 1e-6)
+        gw /= gw.sum(axis=1, keepdims=True)
+        gtargets = (gaussian_xyz[gidx] * gw[..., None]).sum(axis=1)
+        shell_delta = gtargets - out
+        out = out + shell_delta * shell_blend
+        logger.info("高斯壳层微调: shell_blend=%.2f", shell_blend)
+
     logger.info(
-        "高斯位移映射: mode=%s k=%d blend=%.2f cap=%s",
+        "高斯位移映射: mode=%s k=%d blend=%.2f gauss_cap=%s vert_cap=%s",
         mode,
         k,
         settings.fbx_displacement_blend,
         per_gaussian_cap if per_gaussian_cap > 0 else "none",
+        settings.fbx_max_vertex_move if settings.fbx_max_vertex_move > 0 else "none",
     )
-    return mesh_verts + vert_disp * settings.fbx_displacement_blend
+    return out
 
 
 def _write_obj(
@@ -616,6 +647,11 @@ def export_skinned_mesh_from_gaussian(
 
     gaussian_xyz = read_gaussian_ply_xyz(ply_path)
     logger.info("高斯 PLY: %s (%d points)", ply_path.name, len(gaussian_xyz))
+    if not (output_dir / "gs_anchors.npy").is_file():
+        logger.warning(
+            "缺少 gs_anchors.npy：网格形变可能与 3DGS 偏差很大。"
+            " 请用最新 HRM 重新 3D 重建（非仅 rebake）"
+        )
     anchor_xyz = _load_anchor_points(
         root, output_dir=output_dir, gaussian_count=len(gaussian_xyz)
     )
@@ -674,6 +710,7 @@ def export_skinned_mesh_from_gaussian(
         fbx_path,
         texture_path=tex_for_fbx,
         subdivision_levels=settings.fbx_subdivision_levels,
+        subdivision_type=settings.fbx_subdivision_type,
     )
 
     return {
@@ -685,6 +722,7 @@ def export_skinned_mesh_from_gaussian(
         "joint_count": len(joint_names),
         "vertex_count": int(len(displaced_verts)),
         "fbx_subdivision_levels": settings.fbx_subdivision_levels,
+        "fbx_subdivision_type": settings.fbx_subdivision_type,
         "fbx_texture_baked": bool(tex_for_fbx),
         "mock": False,
     }

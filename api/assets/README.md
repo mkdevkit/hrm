@@ -24,3 +24,7 @@ SMPLX_UV_OBJ=/path/to/smplx_uv.obj
 ```bash
 python scripts/rebake_avatar_fbx.py data/avatars/<avatar_id>/output
 ```
+
+## 形态与 3DGS 的差距（预期）
+
+蒙皮 FBX 是 **SMPL-X 拓扑 + 高斯形变**，不是 splat 本体；鞋、宽衣、头发只能近似。默认 `FBX_DISPLACEMENT_MODE=gs_target` 让顶点向邻域高斯位置收敛，比纯模板位移更接近 3DGS。仍不满意时可试 `FBX_GS_SHELL_BLEND=0.3`。

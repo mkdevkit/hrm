@@ -42,16 +42,24 @@ class Settings(BaseSettings):
     # FBX 导出：3DGS→UV 烘焙 + 细分高模
     fbx_texture_size: int = 2048
     fbx_subdivision_levels: int = 1  # 0=低模，1≈4×面，2≈16×面
+    # simple=只增面不磨圆(鞋/衣凸起) | catmull=Catmull-Clark 会把凸起抹平
+    fbx_subdivision_type: str = "simple"
     fbx_bake_texture: bool = True
     # 高斯→UV splat 半径（像素）；略大更平滑，略小更锐
-    fbx_texture_splat_radius: float = 2.0
+    fbx_texture_splat_radius: float = 1.0
+    # 烘焙后双边滤波（易呈「毛玻璃」感，默认关闭）
+    fbx_texture_smooth: bool = False
     # 高斯→SMPL-X 位移：过小会导致网格与 3DGS 对不齐
     fbx_max_displacement: float = 0.0  # 0=不裁剪单点位移（鞋/衣等需大位移）
     fbx_displacement_blend: float = 1.0
-    # mean=平滑(易显瘦) | sharp=锐化插值 | max=取邻域最大位移(保鞋/体积)
-    fbx_displacement_mode: str = "max"
-    fbx_displacement_k: int = 4
-    fbx_displacement_sharpness: float = 4.0
+    # gs_target=顶点向邻域高斯收敛(最接近3DGS体积) | max | sharp | mean
+    fbx_displacement_mode: str = "gs_target"
+    fbx_displacement_k: int = 3
+    fbx_displacement_sharpness: float = 5.0
+    # gs_target 下单顶点相对模板的最大移动距离(米)；0=不限制
+    fbx_max_vertex_move: float = 0.0
+    # 主位移后追加：向最近高斯壳层轻拉(0=关闭, 0.2~0.4 可试)
+    fbx_gs_shell_blend: float = 0.0
     # 可选：SMPL-X 官方 smplx_uv.obj（human_model_files 无 UV 时手动指定）
     smplx_uv_obj: str = ""
 

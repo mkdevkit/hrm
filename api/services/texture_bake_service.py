@@ -476,7 +476,7 @@ def gaussian_splat_colors_to_texture(
     disk = (xx.astype(np.float32) ** 2 + yy.astype(np.float32) ** 2) <= splat_radius**2
     offs_y = yy[disk].astype(np.float32)
     offs_x = xx[disk].astype(np.float32)
-    sigma = max(0.6, splat_radius * 0.45)
+    sigma = max(0.35, splat_radius * 0.32)
     kern = np.exp(-(offs_x**2 + offs_y**2) / (2.0 * sigma**2)).astype(np.float32)
 
     for dy, dx, kw in zip(offs_y, offs_x, kern, strict=True):
@@ -491,7 +491,9 @@ def gaussian_splat_colors_to_texture(
 
 
 def _refine_baked_texture(tex: np.ndarray, weight: np.ndarray) -> np.ndarray:
-    """归一化、补洞并轻微平滑，减轻斑块感。"""
+    """归一化、补洞；可选轻微平滑（默认关闭以免毛玻璃感）。"""
+    from config import settings
+
     mask = weight > 1e-6
     if mask.any():
         tex[mask] /= weight[mask, None]
@@ -499,13 +501,13 @@ def _refine_baked_texture(tex: np.ndarray, weight: np.ndarray) -> np.ndarray:
     holes = (~mask).astype(np.uint8) * 255
     if holes.any() and mask.any():
         fill = (np.clip(tex, 0, 1) * 255).astype(np.uint8)
-        fill = cv2.inpaint(fill, holes, 5, cv2.INPAINT_NS)
+        fill = cv2.inpaint(fill, holes, 3, cv2.INPAINT_TELEA)
         tex = fill.astype(np.float32) / 255.0
         mask = np.any(tex > 1e-4, axis=2)
 
-    if mask.any():
+    if settings.fbx_texture_smooth and mask.any():
         src = (np.clip(tex, 0, 1) * 255).astype(np.uint8)
-        smooth = cv2.bilateralFilter(src, d=5, sigmaColor=18, sigmaSpace=5)
+        smooth = cv2.bilateralFilter(src, d=3, sigmaColor=8, sigmaSpace=3)
         out = tex.copy()
         out[mask] = smooth[mask].astype(np.float32) / 255.0
         return np.clip(out, 0.0, 1.0)

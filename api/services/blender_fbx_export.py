@@ -94,6 +94,7 @@ def export_skinned_fbx(
     *,
     texture_path: Path | None = None,
     subdivision_levels: int = 0,
+    subdivision_type: str = "simple",
     timeout_sec: int = 600,
 ) -> bool:
     """调用 Blender 将 OBJ + 骨骼 JSON + 权重 NPZ + 可选贴图 合并为蒙皮 FBX。"""
@@ -124,6 +125,9 @@ def export_skinned_fbx(
     fbx_path.parent.mkdir(parents=True, exist_ok=True)
     tex_arg = str(texture_path.resolve()) if texture_path and texture_path.is_file() else "-"
     subdiv = str(max(0, subdivision_levels))
+    subdiv_type = (subdivision_type or "simple").strip().lower()
+    if subdiv_type not in ("simple", "catmull", "catmull_clark"):
+        subdiv_type = "simple"
     cmd = [
         blender,
         "--background",
@@ -137,6 +141,7 @@ def export_skinned_fbx(
         str(fbx_path.resolve()),
         tex_arg,
         subdiv,
+        subdiv_type,
     ]
     logger.info("Blender FBX 导出: %s", " ".join(cmd))
 

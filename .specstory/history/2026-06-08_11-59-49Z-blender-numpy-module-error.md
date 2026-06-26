@@ -28256,4 +28256,6875 @@ _**User**_
 _**Agent (default)**_
 
 <think><details><summary>Thought Process</summary>
-用户反馈生成的模型尺寸偏小。四肢显得过细，脚部还出现了脚肢。</details></think>
+用户反馈生成的模型尺寸偏小。四肢显得过细，脚部还出现了脚肢。
+
+脚部鞋上的“脚肢”可能是鞋体几何与脚部骨骼发生穿模或伪影。问题根源可能在于：位移场未能充分捕获3DGS体积；SMPL-X模板本身无法表达服装和鞋子的额外体积；或者细分操作仅改善了平滑度，未改变整体形状。
+
+具体技术原因已明确：最大位移上限（FBX_MAX_DISPLACEMENT=1）会裁剪超出SMPL表面的高斯点，导致鞋子体积无法完整表达。k=8的kNN插值将外突部位平均到局部均值，使脚部和鞋子的体积被过度压缩。blend_strength已设为1.0，该因素可排除。
+
+进一步分析发现，脚部高斯云位于SMPL足面之外，仅靠邻近身体锚点的位移插值无法将网格推至足够深度以包裹鞋子体积。SMPL足部薄壳仍残留在鞋体内部，纹理虽覆盖但底层几何未被完全替换，导致可见的脚肢伪影。
+
+建议改用最近邻锚点直接映射位移，替代k=8的平均插值，以保留脚部和鞋子的局部体积。同时应提高最大位移上限，使高斯云能充分延伸至鞋体深度。
+
+也评估了更激进的径向膨胀方案：让每个网格顶点直接对齐最近的高斯点位置，但这会破坏LBS约束，不适合直接用于骨架绑定。另一种思路是用最近高斯点的坐标直接混合到SMPL顶点，但权重过大会破坏刚性约束。因此仍建议将kNN插值的锚点数从8减至1到3，使位移更锐利，从而保留脚部和鞋子的局部体积。
+
+考虑改用k个邻居中位移幅度的最大值来计算外向位移，替代平均值，使脚部和鞋子的体积保持更锐利。同时计划为足部和手部区域单独设置更高的位移上限。
+
+关于鞋内“脚肢”的成因，推测可能是脚部顶点位移不足，导致薄脚轮廓在鞋体纹理下仍然可见；也可能是细分产生的伪影，或是LBS权重使骨骼结构透出变形后的表面。</details></think>
+
+_**Agent (default)**_
+
+四肢偏细、鞋里透出脚型，多半是位移插值把凸起（鞋、肌肉）平均掉了。正在查看并改进位移算法。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将改用更激进的位移模式来解决模型比例偏小的问题。
+
+考虑两种新方案：一是按锚点到高斯中心的方向取最大位移，保留外轮廓；二是直接插值最近k个锚点对应的3DGS表面目标位置。
+
+改用 sharp IDW 权重，使位移仅朝向最近的高斯方向增强。对每个顶点选取 k 个最近邻中位移模长最大的那一个，从而保留外轮廓的膨胀感。
+
+补充了两种具体实现方式：一是按最近邻中位移模长最大者取位移，二是使用 sharp blend 权重。同时计划增加二次径向包裹层，对脚部等末端顶点额外推近最近高斯。还设计了 `fit_envelope` 模式，通过 k 近邻锚点的加权平均直接拟合目标表面。
+
+排除了直接插值目标位置或混合权重的方案，这些方法会破坏拓扑结构。最终仍采用标准的位移公式，仅改用最大范数 k 近邻策略。
+
+同时调整配置默认值：per_gaussian_cap 默认设为 0（无上限），k_neighbors 默认 3，sharpness 默认 4。
+
+确定了三种位移模式：max、sharp、mean。默认推荐 max 或 sharp（k=3），以保留鞋子和身体轮廓。脚部区域将通过 LBS 权重识别，并额外拉向高斯壳体。</details></think>
+
+_**Agent (default)**_
+
+四肢偏细、鞋内透出脚型，是 k=8 平均位移把鞋/肌肉的凸起“抹平”了。正在改为更保体积的位移模式并放宽位移上限。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**原因说明**
+
+1. **整体偏小、四肢偏细**：旧逻辑用 **8 邻域平均位移**，凸起（肌肉、鞋帮）会被拉平，网格像「缩一圈的 SMPL 模板」。
+2. **鞋里透出脚型**：SMPL-X 仍是 **裸足拓扑**；鞋来自 3DGS 向外鼓包。平均位移后脚面不够外鼓，贴图是鞋、几何还是薄脚 → 像脚伸在鞋里。
+3. **`FBX_MAX_DISPLACEMENT=1`** 会裁掉更大位移（鞋、厚衣服），你之前设了 1 米上限也可能仍不够或分布不对。
+
+**本质限制**：FBX 是 **1 万面 SMPL-X + 位移**，不是独立鞋模；只能逼近 3DGS 体积，无法 100% 等同 splat。
+
+## 已改默认策略
+
+| 配置 | 新默认 | 作用 |
+|------|--------|------|
+| `FBX_DISPLACEMENT_MODE` | **`max`** | 邻域内取**最大位移**，保留鞋/粗部位体积 |
+| `FBX_MAX_DISPLACEMENT` | **`0`** | 不裁剪单点高斯位移 |
+| `FBX_DISPLACEMENT_K` | `4` | 邻域更小，少抹平 |
+
+建议在 `api/.env` 里更新：
+
+```env
+FBX_MAX_DISPLACEMENT=0
+FBX_DISPLACEMENT_MODE=max
+FBX_DISPLACEMENT_BLEND=1.0
+```
+
+然后 **rebake**（或重跑重建）：
+
+```bash
+python scripts/rebake_avatar_fbx.py data/avatars/<id>/output
+```
+
+日志应出现：`高斯位移映射: mode=max k=4 ... cap=none`
+
+## 若仍不满意
+
+- 试 `FBX_DISPLACEMENT_MODE=sharp` + `FBX_DISPLACEMENT_K=3`（更锐、略噪）
+- **`FBX_SUBDIVISION_LEVELS=2` 只增加面数**，不增加体积；鞋问题主要靠位移模式
+- 极端鞋型/宽大衣可能仍弱于 3DGS，这是 SMPL-X 蒙皮方案的上限
+
+重建后若脚仍穿模，把 `gs_anchors.npy` 是否存在，以及 rebake 里 `mode=max` 那行日志发过来。
+
+---
+
+_**User**_
+
+FBX_DISPLACEMENT_SHARPNESS是什么？
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "fbx_displacement_sharpness|DISPLACEMENT_SHARPNESS"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "fbx_displacement_sharpness|DISPLACEMENT_SHARPNESS",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api\\config.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\.env.example"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 3
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+`FBX_DISPLACEMENT_SHARPNESS` 只在 **`FBX_DISPLACEMENT_MODE=sharp`** 时生效；默认是 `max`，一般**不用改**这项。
+
+## 作用
+
+把 3DGS 相对锚点的位移插值到 SMPL-X 网格顶点时，`sharp` 模式用**距离加权**：
+
+\[
+w_i = \frac{1}{d_i^{\text{sharpness}} + \varepsilon}
+\]
+
+- **sharpness 越大**（如 4～8）：越偏向**最近**的锚点，位移更「局部」、更保凸起（鞋、关节），但可能略噪、块感。
+- **sharpness 越小**（接近 1）：越接近**多邻域平均**，更平滑，也更容易**显瘦、抹平**。
+
+## 三种模式对比
+
+| 模式 | 是否用到 SHARPNESS |
+|------|-------------------|
+| **`max`**（当前默认） | 否 — 在 k 个邻居里取**位移最大**的那个 |
+| **`sharp`** | **是** — 用上面的幂次加权 |
+| **`mean`** | 否 — 普通 1/距离 平均（最平滑） |
+
+## 建议
+
+- 四肢偏细、鞋鼓不起来：优先用 **`FBX_DISPLACEMENT_MODE=max`**，`SHARPNESS` 可忽略。
+- 若 `max` 太块、想稍平滑：试 **`sharp`** + `FBX_DISPLACEMENT_SHARPNESS=4`（默认），再调到 6～8 更「保体积」，2～3 更平滑。
+
+示例：
+
+```env
+FBX_DISPLACEMENT_MODE=sharp
+FBX_DISPLACEMENT_K=4
+FBX_DISPLACEMENT_SHARPNESS=6
+```
+
+---
+
+_**User**_
+
+还是不像正常的模型，和3dgs模的有点多。
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户反馈FBX/骨骼网格模型仍与正常模型差异较大，与3DGS模型的差距依然明显。
+
+正在考虑直接顶点拟合方案：为每个网格顶点寻找最近的高斯，并在LBS约束下将其拉向该高斯位置，以改善SMPL-X位移网格与3DGS的对齐效果。
+
+正在评估几种改进策略。考虑将位移目标改为直接插值高斯坐标，或采用"高斯壳拟合"：让SMPL顶点向最近高斯点云表面移动。也考虑了两步优化和径向邻域拉拽等方案。
+
+具体实现上，计划用k近邻高斯点的加权平均作为目标位置，通过0.5到1.0的系数将顶点拉向高斯壳表面，使网格能覆盖包括鞋子在内的完整高斯分布。
+
+直接拉拽顶点会破坏网格拓扑并引发自相交，不适合用于骨骼绑定。更合理的做法是直接从高斯场采样：为每个网格顶点查询最近的高斯点，再基于这些高斯点计算相对位移，而非依赖锚点插值。这样既能改善对齐，又不会破坏网格结构。
+
+进一步细化了基于高斯点的修正策略。对于每个顶点，先查询其最近的高斯点，再将该顶点沿初始位移方向向高斯坐标推挤，仅保留沿位移方向的外向分量，避免破坏原有形变。
+
+正在设计一个可配置的二次拟合模式。先按现有锚点位移生成网格，再为每个顶点查找最近的高斯点；若顶点偏离距离超过阈值，则沿该高斯点方向施加渐变权重的拉拽修正。同时需要确认 gs_anchors.npy 文件是否仍然存在，否则会导致严重的锚点错配。
+
+正在编写 `gaussian_shell_fit` 二次修正函数。该函数在位移生成后执行，将网格顶点向局部高斯壳拉拽。参数设定为混合比例 0.65、最大拉拽距离 0.08、k 近邻数 4。同时注意到 smplx_canonical_verts 侧边数据可能未被导出。
+
+已确定二次修正的具体实现：对每个顶点取最近k个高斯点，加权平均得到目标位置，再限制最大拉拽距离，最后按混合比例回写到当前顶点。但担心混合比例过高会导致严重形变，因此默认参数必须保守。同时考虑将最大模式替换为混合模式。
+
+正在设计一种更简单的单次模式 `gs_pull`，将锚点位移与高斯邻近拟合合并为一步完成，避免二次修正的复杂性。
+
+同时考虑引入壳掩码机制：仅对锚点附近高斯扩展较远的区域（如服装、鞋子）施加强拉拽，避免整体过度形变。
+
+另外准备诚实说明 SMPL-X 位移网格与 3DGS 球面无法完美匹配，但仍会将拟合模式设为默认推荐。
+
+正在梳理 mesh_export_service 的导出流程与配置，准备落地两项具体改进：新增 `fbx_gs_shell_blend` 二次修正开关，以及 `fbx_displacement_mode=gs_max` 按顶点最近高斯点重新计算最大位移。同时意识到 gs_anchors 侧边数据缺失可能是导致差异过大的关键原因，需要在导出时显著提示该文件是否存在。
+
+正在细化拟合模式的数学实现。直接将顶点设为最近锚点邻域内高斯坐标的加权平均会过于激进，容易破坏网格拓扑。因此改用更柔和的插值策略：先计算锚点邻域内高斯点的加权平均作为目标位置，再将原顶点沿该方向平滑偏移，避免整体剧烈形变。</details></think>
+
+_**Agent (default)**_
+
+SMPL-X 位移仍与 3DGS 体积对不齐。我们改为让顶点向邻域高斯实际位置收敛，而不只做锚点位移插值。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将默认启用 gs_target 模式。顶点会向最近锚点的高斯坐标加权平均方向移动，直接拟合 3DGS 外壳。
+
+还会增加混合模式，主位移后进一步向最近高斯拉拢。顶点移动将设上限，默认 0.25 米。同时更新文档，并在无锚点侧边栏时导出日志中给出提示。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+这和「贴图/光照」不是一类问题：**FBX 和 3DGS 本来就是两种东西**，不可能做到一模一样，但可以把形变再拉近一些。
+
+## 为什么总差一截
+
+| 3DGS | 蒙皮 FBX |
+|------|----------|
+| 16 万+ 高斯点，任意形状 | ~1 万面 **SMPL-X 人体模板** |
+| 鞋、衣、头发是独立体积 | 只有 **脚骨 + 位移**，没有真鞋模 |
+| 纯视觉 | 要 **骨骼 + LBS**，不能乱飞顶点 |
+
+贴图可以接近 splat，**几何**仍是「穿在人骨上的壳」，鞋区特别容易脚型穿帮、整体偏瘦。
+
+## 必须先确认
+
+没有 **`gs_anchors.npy`**（只 rebake、没重跑重建）时，形变会对不齐 3DGS：
+
+```bash
+ls data/avatars/<id>/output/gs_anchors.npy
+```
+
+没有 → 用 Web **重新 3D 重建**（勾选导出蒙皮网格），再 rebake。
+
+## 刚加的形变策略（默认 `gs_target`）
+
+旧逻辑：`模板顶点 + 插值位移` → 容易显瘦、鞋鼓不起来。
+
+新逻辑 **`gs_target`**：每个顶点向 **邻域高斯的实际 3D 位置** 收敛，更接近 3DGS 外壳。
+
+`.env` 建议：
+
+```env
+FBX_DISPLACEMENT_MODE=gs_target
+FBX_DISPLACEMENT_K=6
+FBX_DISPLACEMENT_BLEND=1.0
+FBX_MAX_DISPLACEMENT=0
+FBX_MAX_VERTEX_MOVE=0
+```
+
+仍偏瘦/鞋不够时可试：
+
+```env
+FBX_GS_SHELL_BLEND=0.3
+```
+
+然后 rebake，日志里应有：`高斯位移映射: mode=gs_target ...`
+
+## 合理预期
+
+- **颜色**：贴图 + 3dviewer 无光照 → 可以较像 3DGS  
+- **轮廓**：大体轮廓接近，**鞋、宽衣、发型** 会明显弱于 splat  
+- **动画**：这是 SMPL-X 蒙皮 FBX 的取舍，不是 splat 预览的替代品  
+
+若 **`gs_anchors.npy` 已有**、已是 `gs_target`，和 3DGS 仍差很多，把 rebake 里 `高斯位移映射` 那行和是否有 sidecar 发过来；若 sidecar 没有，优先重跑重建比继续调参更有效。
+
+---
+
+_**User**_
+
+像毛玻璃
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户提到模型看起来像毛玻璃。
+
+正在排查毛玻璃效果的成因。可能原因包括：纹理平滑处理、高斯半径过大、孔洞修复导致的颜色模糊，以及3D查看器材质设置或纹理压缩问题。</details></think>
+
+_**Agent (default)**_
+
+「毛玻璃」感多半来自贴图烘焙时的模糊/平滑。正在检查烘焙与查看器里的相关处理。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在分析毛玻璃效果的成因。
+
+已定位到几个可能原因：双边滤波和着色器参数导致过度平滑；inpaint 撕裂颜色；大半径斑点模糊了边缘；Blender 细分拉伸了 UV。3D 渲染器的 ACES 映射也可能残留影响。
+
+还怀疑纹理过滤和双加载导致模糊。计划将双边滤波改为可选配置并默认关闭，缩小 inpaint 半径，降低斑点半径并改用更硬的核函数，同时考虑添加轻量锐化。
+
+还会把纹理过滤设为线性并开启各向异性采样以提升清晰度。同时准备在 3D viewer 中关闭未光照模型的色调映射与环境光，避免渲染器干扰。
+
+还怀疑纹理加载失败后回退到了带环境反射的 PBR 材质，从而产生毛玻璃的半透明感。</details></think>
+
+_**Agent (default)**_
+
+毛玻璃感主要来自贴图烘焙里的 bilateral 模糊和大半径 splat。正在改为更锐利的默认烘焙，并优化 3dviewer 贴图采样。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+担心 loadFromUrl 出现问题。setModel 在该函数内被调用，而色调映射是在其返回路径之后才添加的。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**「毛玻璃」感**主要来自贴图被**过度模糊**，不是 3DGS 本身的问题。
+
+## 原因
+
+1. **烘焙后 bilateral 平滑**（`sigmaColor=18`）→ 整张贴图发糊  
+2. **splat 半径太大**（你之前 `1.5~2.0`）→ 颜色互相糊在一起  
+3. **大面积 inpaint 补洞** → 一块块雾化  
+4. **3dviewer** 对贴图仍走 ACES 色调映射 → 略发灰、发蒙  
+
+## 已改
+
+- 默认 **关闭** 贴图平滑（`FBX_TEXTURE_SMOOTH=false`）  
+- 默认 splat 半径 **1.0**，核更锐  
+- inpaint 改轻量 TELEA  
+- 3dviewer 有贴图时用 **NoToneMapping**，贴图线性采样  
+
+## 请你这边
+
+`.env` 建议：
+
+```env
+FBX_TEXTURE_SPLAT_RADIUS=1.0
+FBX_TEXTURE_SMOOTH=false
+```
+
+更新代码 + 刷新 3dviewer 后 **重烘焙**：
+
+```bash
+python scripts/rebake_avatar_fbx.py data/avatars/<id>/output
+```
+
+若仍略糊可试 `FBX_TEXTURE_SPLAT_RADIUS=0.8`；若出现斑块再调到 `1.2`（**不要**开 `FBX_TEXTURE_SMOOTH=true`）。
+
+**说明**：`FBX_SUBDIVISION_LEVELS=2` 只增加面数，不会让贴图更清；毛玻璃感主要看 **diffuse 烘焙**，与细分无关。
+
+---
+
+_**User**_
+
+原来的鞋像被涂抹了一样，是模型的面，不是颜色
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户澄清了之前的问题：鞋像被涂抹并非颜色问题，而是模型的面。</details></think>
+
+_**Agent (default)**_
+
+用户说的是鞋的几何面被“涂抹”，不是贴图颜色。我先查网格位移、细分和平滑相关逻辑。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="semantic_search_full">
+<details>
+<summary>Tool use: **semantic_search_full**</summary>
+
+
+Parameters:
+
+```json
+{
+  "explanation": "",
+  "includePattern": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "query": "How does mesh displacement and subdivision affect FBX geometry export?",
+  "topK": 10
+}
+```
+Result:
+
+```json
+{
+  "codeResults": [
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 179,
+            "text": "def _lhm_canonical_poses_tensor(device: torch.device) -\u003e torch.Tensor:"
+          },
+          {
+            "lineNumber": 186
+          },
+          {
+            "lineNumber": 187,
+            "text": "    poses[0, 2, 2] = -math.pi / 12"
+          },
+          {
+            "lineNumber": 188,
+            "text": "    # body_pose[15,16] -\u003e left/right wrist z（关节 20,21）"
+          },
+          {
+            "lineNumber": 189,
+            "text": "    poses[0, 20, 2] = -math.pi / 6"
+          },
+          {
+            "lineNumber": 190,
+            "text": "    poses[0, 21, 2] = math.pi / 6"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 191,
+            "text": "    return poses"
+          },
+          {
+            "lineNumber": 192
+          },
+          {
+            "lineNumber": 193
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 194,
+            "text": "def _load_smplx_mesh_lhm_canonical("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 195,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 196,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 197,
+            "text": "    *,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 198,
+            "text": "    output_dir: Path | None = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 199,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 200,
+            "text": "    \"\"\"SMPL-X 网格；优先 LHM 推理 sidecar 顶点，否则 LHM canonical pose + betas。\"\"\""
+          },
+          {
+            "lineNumber": 201,
+            "text": "    sidecar_verts: np.ndarray | None = None"
+          },
+          {
+            "lineNumber": 202,
+            "text": "    if output_dir is not None:"
+          },
+          {
+            "lineNumber": 203,
+            "text": "        sidecar_path = output_dir / \"smplx_canonical_verts.npy\""
+          },
+          {
+            "lineNumber": 204,
+            "text": "        if sidecar_path.is_file():"
+          },
+          {
+            "lineNumber": 205,
+            "text": "            sidecar_verts = np.load(sidecar_path).astype(np.float32)"
+          },
+          {
+            "lineNumber": 206,
+            "text": "            logger.info(\"SMPL-X 顶点来自推理 sidecar (%d verts)\", len(sidecar_verts))"
+          },
+          {
+            "lineNumber": 207
+          },
+          {
+            "lineNumber": 208,
+            "text": "    import sys"
+          },
+          {
+            "lineNumber": 209,
+            "text": "    import torch"
+          },
+          {
+            "lineNumber": 210
+          },
+          {
+            "lineNumber": 211,
+            "text": "    if str(lhm_root) not in sys.path:"
+          },
+          {
+            "lineNumber": 212,
+            "text": "        sys.path.insert(0, str(lhm_root))"
+          },
+          {
+            "lineNumber": 213
+          },
+          {
+            "lineNumber": 214,
+            "text": "    human_model = lhm_root / \"pretrained_models\" / \"human_model_files\""
+          },
+          {
+            "lineNumber": 215,
+            "text": "    from engine.pose_estimation.blocks import SMPL_Layer"
+          },
+          {
+            "lineNumber": 216
+          },
+          {
+            "lineNumber": 217,
+            "text": "    layer = SMPL_Layer("
+          },
+          {
+            "lineNumber": 218,
+            "text": "        str(human_model),"
+          },
+          {
+            "lineNumber": 219,
+            "text": "        type=\"smplx\","
+          },
+          {
+            "lineNumber": 220,
+            "text": "        gender=\"neutral\","
+          },
+          {
+            "lineNumber": 221,
+            "text": "        num_betas=10,"
+          },
+          {
+            "lineNumber": 222,
+            "text": "        kid=False,"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 263
+          },
+          "startPosition": {
+            "line": 178
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.4275762140750885
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 296,
+            "text": "def ensure_skeleton_rest_positions("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 297,
+            "text": "    obj_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 298,
+            "text": "    skel_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 299,
+            "text": "    weights_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 300,
+            "text": ") -\u003e bool:"
+          },
+          {
+            "lineNumber": 314
+          },
+          {
+            "lineNumber": 315,
+            "text": "    skel[\"version\"] = max(int(skel.get(\"version\") or 1), 2)"
+          },
+          {
+            "lineNumber": 316,
+            "text": "    skel_path.write_text(json.dumps(skel, ensure_ascii=False, indent=2), encoding=\"utf-8\")"
+          },
+          {
+            "lineNumber": 317,
+            "text": "    logger.info("
+          },
+          {
+            "lineNumber": 318,
+            "text": "        \"已补全 skeleton.json 的 joint_rest_positions（%d 关节，来源 OBJ+LBS 权重）\","
+          },
+          {
+            "lineNumber": 319,
+            "text": "        len(joint_names),"
+          },
+          {
+            "lineNumber": 320,
+            "text": "    )"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 321,
+            "text": "    return True"
+          },
+          {
+            "lineNumber": 322
+          },
+          {
+            "lineNumber": 323
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 324,
+            "text": "def _read_ply_xyz(ply_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 325,
+            "text": "    \"\"\"读取 PLY 顶点坐标（dense_sample prior 与 3DGS 导出共用）。\"\"\""
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 326,
+            "text": "    return read_gaussian_ply_xyz(ply_path)"
+          },
+          {
+            "lineNumber": 327
+          },
+          {
+            "lineNumber": 328
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 329,
+            "text": "def _load_anchor_points("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 330,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 331,
+            "text": "    *,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 332,
+            "text": "    output_dir: Path | None = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 333,
+            "text": "    gaussian_count: Optional[int] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 334,
+            "text": "    cano_pose_type: int = 1,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 335,
+            "text": ") -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 336,
+            "text": "    \"\"\"加载与 PLY 高斯索引对齐的锚点；优先推理 sidecar，其次 dense_sample 缓存。\"\"\""
+          },
+          {
+            "lineNumber": 337,
+            "text": "    if output_dir is not None:"
+          },
+          {
+            "lineNumber": 338,
+            "text": "        sidecar = output_dir / \"gs_anchors.npy\""
+          },
+          {
+            "lineNumber": 339,
+            "text": "        if sidecar.is_file():"
+          },
+          {
+            "lineNumber": 340,
+            "text": "            anchors = np.load(sidecar).astype(np.float32)"
+          },
+          {
+            "lineNumber": 341,
+            "text": "            if gaussian_count and len(anchors) != gaussian_count:"
+          },
+          {
+            "lineNumber": 342,
+            "text": "                raise RuntimeError("
+          },
+          {
+            "lineNumber": 343,
+            "text": "                    f\"gs_anchors.npy ({len(anchors)}) 与 PLY 高斯数 ({gaussian_count}) 不一致；\""
+          },
+          {
+            "lineNumber": 344,
+            "text": "                    \"请用最新 HRM 重新跑 3D 重建以生成 sidecar\""
+          },
+          {
+            "lineNumber": 345,
+            "text": "                )"
+          },
+          {
+            "lineNumber": 346,
+            "text": "            logger.info(\"锚点来自推理 sidecar gs_anchors.npy (%d points)\", len(anchors))"
+          },
+          {
+            "lineNumber": 347,
+            "text": "            return anchors"
+          },
+          {
+            "lineNumber": 348,
+            "text": "        logger.warning("
+          },
+          {
+            "lineNumber": 349,
+            "text": "            \"未找到 %s：蒙皮网格将用 dense_sample 缓存锚点，可能与 3DGS 严重错位。\""
+          },
+          {
+            "lineNumber": 350,
+            "text": "            \" 请重新执行 3D 重建（非仅 rebake）以生成 gs_anchors.npy\","
+          },
+          {
+            "lineNumber": 351,
+            "text": "            sidecar,"
+          },
+          {
+            "lineNumber": 352,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 353
+          },
+          {
+            "lineNumber": 354,
+            "text": "    from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts"
+          },
+          {
+            "lineNumber": 355
+          },
+          {
+            "lineNumber": 356,
+            "text": "    cache_dir = lhm_root / \"pretrained_models\" / \"dense_sample_points\""
+          },
+          {
+            "lineNumber": 357
+          },
+          {
+            "lineNumber": 358,
+            "text": "    if gaussian_count and gaussian_count \u003e 0:"
+          },
+          {
+            "lineNumber": 359,
+            "text": "        for cano in (cano_pose_type, 0, 1):"
+          },
+          {
+            "lineNumber": 360,
+            "text": "            path = cache_dir / f\"{cano}_{gaussian_count}.ply\""
+          },
+          {
+            "lineNumber": 361,
+            "text": "            if path.is_file():"
+          },
+          {
+            "lineNumber": 362,
+            "text": "                pts = _read_ply_xyz(path)"
+          },
+          {
+            "lineNumber": 363,
+            "text": "                logger.info(\"锚点 PLY: %s (%d points)\", path.name, len(pts))"
+          },
+          {
+            "lineNumber": 364,
+            "text": "                return pts"
+          },
+          {
+            "lineNumber": 365
+          },
+          {
+            "lineNumber": 366,
+            "text": "    target = gaussian_count or settings.effective_infer_dense_sample_pts or 160000"
+          },
+          {
+            "lineNumber": 367,
+            "text": "    if target \u003c= 0:"
+          },
+          {
+            "lineNumber": 368,
+            "text": "        target = 160000"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 393
+          },
+          "startPosition": {
+            "line": 295
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.405251145362854
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 194,
+            "text": "def _load_smplx_mesh_lhm_canonical("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 195,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 196,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 197,
+            "text": "    *,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 198,
+            "text": "    output_dir: Path | None = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 199,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 219
+          },
+          {
+            "lineNumber": 220,
+            "text": "        gender=\"neutral\","
+          },
+          {
+            "lineNumber": 221,
+            "text": "        num_betas=10,"
+          },
+          {
+            "lineNumber": 222,
+            "text": "        kid=False,"
+          },
+          {
+            "lineNumber": 223,
+            "text": "        person_center=\"head\","
+          },
+          {
+            "lineNumber": 224,
+            "text": "    )"
+          },
+          {
+            "lineNumber": 225,
+            "text": "    device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")"
+          },
+          {
+            "lineNumber": 226,
+            "text": "    layer = layer.to(device)"
+          },
+          {
+            "lineNumber": 227
+          },
+          {
+            "lineNumber": 228,
+            "text": "    if betas is None:"
+          },
+          {
+            "lineNumber": 229,
+            "text": "        betas = np.zeros(10, dtype=np.float32)"
+          },
+          {
+            "lineNumber": 230,
+            "text": "    betas_t = torch.tensor(betas[:10], dtype=torch.float32, device=device).unsqueeze(0)"
+          },
+          {
+            "lineNumber": 231,
+            "text": "    poses = _lhm_canonical_poses_tensor(device)"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 263
+          },
+          "startPosition": {
+            "line": 193
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.32347536087036133
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 194,
+            "text": "def _load_smplx_mesh_lhm_canonical("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 195,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 196,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 197,
+            "text": "    *,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 198,
+            "text": "    output_dir: Path | None = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 199,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 229
+          },
+          {
+            "lineNumber": 230,
+            "text": "    betas_t = torch.tensor(betas[:10], dtype=torch.float32, device=device).unsqueeze(0)"
+          },
+          {
+            "lineNumber": 231,
+            "text": "    poses = _lhm_canonical_poses_tensor(device)"
+          },
+          {
+            "lineNumber": 232
+          },
+          {
+            "lineNumber": 233,
+            "text": "    with torch.no_grad():"
+          },
+          {
+            "lineNumber": 234,
+            "text": "        output = layer.forward_local(poses, betas_t)"
+          },
+          {
+            "lineNumber": 235,
+            "text": "        if output is None:"
+          },
+          {
+            "lineNumber": 236,
+            "text": "            raise RuntimeError(\"SMPL_Layer.forward_local 返回空结果\")"
+          },
+          {
+            "lineNumber": 237
+          },
+          {
+            "lineNumber": 238,
+            "text": "    verts = output.vertices[0].detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 239,
+            "text": "    if sidecar_verts is not None and len(sidecar_verts) == len(verts):"
+          },
+          {
+            "lineNumber": 240,
+            "text": "        verts = sidecar_verts"
+          },
+          {
+            "lineNumber": 241,
+            "text": "    elif sidecar_verts is not None:"
+          },
+          {
+            "lineNumber": 242,
+            "text": "        logger.warning("
+          },
+          {
+            "lineNumber": 243,
+            "text": "            \"sidecar 顶点数 (%d) 与 SMPL-X (%d) 不一致，使用 LHM canonical pose 网格\","
+          },
+          {
+            "lineNumber": 244,
+            "text": "            len(sidecar_verts),"
+          },
+          {
+            "lineNumber": 245,
+            "text": "            len(verts),"
+          },
+          {
+            "lineNumber": 246,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 247
+          },
+          {
+            "lineNumber": 248,
+            "text": "    faces = layer.bm_x.faces_tensor.detach().cpu().numpy().astype(np.int32)"
+          },
+          {
+            "lineNumber": 249,
+            "text": "    weights = layer.bm_x.lbs_weights.detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 250,
+            "text": "    joint_names = SMPLX_JOINT_NAMES[: weights.shape[1]]"
+          },
+          {
+            "lineNumber": 251
+          },
+          {
+            "lineNumber": 252,
+            "text": "    if hasattr(output, \"joints\") and output.joints is not None:"
+          },
+          {
+            "lineNumber": 253,
+            "text": "        joints = output.joints[0].detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 254,
+            "text": "        if joints.ndim == 3:"
+          },
+          {
+            "lineNumber": 255,
+            "text": "            joints = joints[0]"
+          },
+          {
+            "lineNumber": 256,
+            "text": "    else:"
+          },
+          {
+            "lineNumber": 257,
+            "text": "        j_reg = getattr(layer.bm_x, \"J_regressor\", None)"
+          },
+          {
+            "lineNumber": 258,
+            "text": "        if j_reg is not None:"
+          },
+          {
+            "lineNumber": 259,
+            "text": "            jv ="
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 263
+          },
+          "startPosition": {
+            "line": 193
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.31359320878982544
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 194,
+            "text": "def _load_smplx_mesh_lhm_canonical("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 195,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 196,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 197,
+            "text": "    *,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 198,
+            "text": "    output_dir: Path | None = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 199,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 257
+          },
+          {
+            "lineNumber": 258,
+            "text": "        if j_reg is not None:"
+          },
+          {
+            "lineNumber": 259,
+            "text": "            jv = torch.tensor(verts, dtype=torch.float32, device=j_reg.device)"
+          },
+          {
+            "lineNumber": 260,
+            "text": "            joints = torch.matmul(j_reg, jv).detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 261,
+            "text": "        else:"
+          },
+          {
+            "lineNumber": 262,
+            "text": "            joints = _estimate_joint_positions(verts, weights, len(joint_names))"
+          },
+          {
+            "lineNumber": 263
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 264,
+            "text": "    return verts, faces, weights, joint_names, joints"
+          },
+          {
+            "lineNumber": 265
+          },
+          {
+            "lineNumber": 266
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 267,
+            "text": "def _estimate_joint_positions("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 268,
+            "text": "    verts: np.ndarray,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 269,
+            "text": "    weights: np.ndarray,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 270,
+            "text": "    joint_count: int,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 271,
+            "text": ") -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 272,
+            "text": "    \"\"\"无 joints 输出时，用 LBS 权重对顶点加权估计关节位置。\"\"\""
+          },
+          {
+            "lineNumber": 273,
+            "text": "    joints = np.zeros((joint_count, 3), dtype=np.float32)"
+          },
+          {
+            "lineNumber": 274,
+            "text": "    for ji in range(joint_count):"
+          },
+          {
+            "lineNumber": 275,
+            "text": "        w = weights[:, ji]"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 278
+          },
+          "startPosition": {
+            "line": 193
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.30181074142456055
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 98,
+            "text": "def _read_ply_xyz_fallback(ply_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 112
+          },
+          {
+            "lineNumber": 113,
+            "text": "            points.append([float(parts[0]), float(parts[1]), float(parts[2])])"
+          },
+          {
+            "lineNumber": 114,
+            "text": "    if not points:"
+          },
+          {
+            "lineNumber": 115,
+            "text": "        raise ValueError(f\"无法解析 PLY: {ply_path}\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 116,
+            "text": "    return np.asarray(points, dtype=np.float32)"
+          },
+          {
+            "lineNumber": 117
+          },
+          {
+            "lineNumber": 118
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 119,
+            "text": "def _load_smplx_mesh("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 120,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 121,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 122,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 123,
+            "text": "    \"\"\"从 LHM++ human_model_files 加载 SMPL-X T-pose 网格、LBS 权重与关节位置。\"\"\""
+          },
+          {
+            "lineNumber": 124,
+            "text": "    import sys"
+          },
+          {
+            "lineNumber": 125,
+            "text": "    import torch"
+          },
+          {
+            "lineNumber": 126
+          },
+          {
+            "lineNumber": 127,
+            "text": "    if str(lhm_root) not in sys.path:"
+          },
+          {
+            "lineNumber": 128,
+            "text": "        sys.path.insert(0, str(lhm_root))"
+          },
+          {
+            "lineNumber": 129
+          },
+          {
+            "lineNumber": 130,
+            "text": "    human_model = lhm_root / \"pretrained_models\" / \"human_model_files\""
+          },
+          {
+            "lineNumber": 131,
+            "text": "    from engine.pose_estimation.blocks import SMPL_Layer"
+          },
+          {
+            "lineNumber": 132
+          },
+          {
+            "lineNumber": 133,
+            "text": "    layer = SMPL_Layer("
+          },
+          {
+            "lineNumber": 134,
+            "text": "        str(human_model),"
+          },
+          {
+            "lineNumber": 135,
+            "text": "        type=\"smplx\","
+          },
+          {
+            "lineNumber": 136,
+            "text": "        gender=\"neutral\","
+          },
+          {
+            "lineNumber": 137,
+            "text": "        num_betas=10,"
+          },
+          {
+            "lineNumber": 138,
+            "text": "        kid=False,"
+          },
+          {
+            "lineNumber": 139,
+            "text": "        person_center=\"head\","
+          },
+          {
+            "lineNumber": 140,
+            "text": "    )"
+          },
+          {
+            "lineNumber": 141,
+            "text": "    device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")"
+          },
+          {
+            "lineNumber": 142,
+            "text": "    layer = layer.to(device)"
+          },
+          {
+            "lineNumber": 143
+          },
+          {
+            "lineNumber": 144,
+            "text": "    if betas is None:"
+          },
+          {
+            "lineNumber": 145,
+            "text": "        betas = np.zeros(10, dtype=np.float32)"
+          },
+          {
+            "lineNumber": 146,
+            "text": "    betas_t = torch.tensor(betas[:10], dtype=torch.float32, device=device).unsqueeze(0)"
+          },
+          {
+            "lineNumber": 147
+          },
+          {
+            "lineNumber": 148,
+            "text": "    batch_size = 1"
+          },
+          {
+            "lineNumber": 149,
+            "text": "    # T-pose：53 关节 axis-angle（与 SMPL_Layer.forward_local 一致，无需相机 K）"
+          },
+          {
+            "lineNumber": 150,
+            "text": "    poses = torch.zeros(batch_size, 53, 3, device=device)"
+          },
+          {
+            "lineNumber": 151
+          },
+          {
+            "lineNumber": 152,
+            "text": "    with torch.no_grad():"
+          },
+          {
+            "lineNumber": 153,
+            "text": "        output = layer.forward_local(poses, betas_t)"
+          },
+          {
+            "lineNumber": 154,
+            "text": "        if output is None:"
+          },
+          {
+            "lineNumber": 155,
+            "text": "            raise RuntimeError(\"SMPL_Layer.forward_local 返回空结果\")"
+          },
+          {
+            "lineNumber": 156
+          },
+          {
+            "lineNumber": 157,
+            "text": "    verts = output.vertices[0].detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 158,
+            "text": "    faces = layer.bm_x.faces_tensor.detach().cpu().numpy().astype(np.int32)"
+          },
+          {
+            "lineNumber": 159,
+            "text": "    weights = layer.bm_x.lbs_weights.detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 160,
+            "text": "    joint_names = SMPLX_JOINT_NAMES[: weights.shape[1]]"
+          },
+          {
+            "lineNumber": 161
+          },
+          {
+            "lineNumber": 162,
+            "text": "    if hasattr(output, \"joints\") and output.joints is not None:"
+          },
+          {
+            "lineNumber": 163,
+            "text": "        joints = output.joints[0].detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 164,
+            "text": "        if joints.ndim == 3:"
+          },
+          {
+            "lineNumber": 165,
+            "text": "            joints = joints[0]"
+          },
+          {
+            "lineNumber": 166,
+            "text": "    else:"
+          },
+          {
+            "lineNumber": 167,
+            "text": "        j_reg = getattr(layer.bm_x, \"J_regressor\", None)"
+          },
+          {
+            "lineNumber": 168,
+            "text": "        if j_reg is not None:"
+          },
+          {
+            "lineNumber": 169,
+            "text": "            import torch"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 175
+          },
+          "startPosition": {
+            "line": 97
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.3013211488723755
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 1,
+            "text": "\"\"\""
+          },
+          {
+            "lineNumber": 2
+          },
+          {
+            "lineNumber": 3,
+            "text": "from __future__ import annotations"
+          },
+          {
+            "lineNumber": 4
+          },
+          {
+            "lineNumber": 5,
+            "text": "import json"
+          },
+          {
+            "lineNumber": 6,
+            "text": "import logging"
+          },
+          {
+            "lineNumber": 7,
+            "text": "from pathlib import Path"
+          },
+          {
+            "lineNumber": 8,
+            "text": "from typing import Any, Optional"
+          },
+          {
+            "lineNumber": 9
+          },
+          {
+            "lineNumber": 10,
+            "text": "import numpy as np"
+          },
+          {
+            "lineNumber": 11
+          },
+          {
+            "lineNumber": 12,
+            "text": "from config import settings"
+          },
+          {
+            "lineNumber": 13,
+            "text": "from services.blender_fbx_export import export_skinned_fbx"
+          },
+          {
+            "lineNumber": 14
+          },
+          {
+            "lineNumber": 15,
+            "text": "logger = logging.getLogger(__name__)"
+          },
+          {
+            "lineNumber": 16
+          },
+          {
+            "lineNumber": 17,
+            "text": "# SMPL-X 标准 55 关节（root + body21 + jaw + eyes2 + hands30）"
+          },
+          {
+            "lineNumber": 18,
+            "text": "SMPLX_JOINT_NAMES: list[str] = ["
+          },
+          {
+            "lineNumber": 19,
+            "text": "    \"pelvis\","
+          },
+          {
+            "lineNumber": 20,
+            "text": "    \"left_hip\","
+          },
+          {
+            "lineNumber": 21,
+            "text": "    \"right_hip\","
+          },
+          {
+            "lineNumber": 22,
+            "text": "    \"spine1\","
+          },
+          {
+            "lineNumber": 23,
+            "text": "    \"left_knee\","
+          },
+          {
+            "lineNumber": 24,
+            "text": "    \"right_knee\","
+          },
+          {
+            "lineNumber": 25,
+            "text": "    \"spine2\","
+          },
+          {
+            "lineNumber": 26,
+            "text": "    \"left_ankle\","
+          },
+          {
+            "lineNumber": 27,
+            "text": "    \"right_ankle\","
+          },
+          {
+            "lineNumber": 28,
+            "text": "    \"spine3\","
+          },
+          {
+            "lineNumber": 29,
+            "text": "    \"left_foot\","
+          },
+          {
+            "lineNumber": 30,
+            "text": "    \"right_foot\","
+          },
+          {
+            "lineNumber": 31,
+            "text": "    \"neck\","
+          },
+          {
+            "lineNumber": 32,
+            "text": "    \"left_collar\","
+          },
+          {
+            "lineNumber": 33,
+            "text": "    \"right_collar\","
+          },
+          {
+            "lineNumber": 34,
+            "text": "    \"head\","
+          },
+          {
+            "lineNumber": 35,
+            "text": "    \"left_shoulder\","
+          },
+          {
+            "lineNumber": 36,
+            "text": "    \"right_shoulder\","
+          },
+          {
+            "lineNumber": 37,
+            "text": "    \"left_elbow\","
+          },
+          {
+            "lineNumber": 38,
+            "text": "    \"right_elbow\","
+          },
+          {
+            "lineNumber": 39,
+            "text": "    \"left_wrist\","
+          },
+          {
+            "lineNumber": 40,
+            "text": "    \"right_wrist\","
+          },
+          {
+            "lineNumber": 41,
+            "text": "    \"jaw\","
+          },
+          {
+            "lineNumber": 42,
+            "text": "    \"left_eye_smplhf\","
+          },
+          {
+            "lineNumber": 43,
+            "text": "    \"right_eye_smplhf\","
+          },
+          {
+            "lineNumber": 44,
+            "text": "    \"left_index1\","
+          },
+          {
+            "lineNumber": 45,
+            "text": "    \"left_index2\","
+          },
+          {
+            "lineNumber": 46,
+            "text": "    \"left_index3\","
+          },
+          {
+            "lineNumber": 47,
+            "text": "    \"left_middle1\","
+          },
+          {
+            "lineNumber": 48,
+            "text": "    \"left_middle2\","
+          },
+          {
+            "lineNumber": 49,
+            "text": "    \"left_middle3\","
+          },
+          {
+            "lineNumber": 50,
+            "text": "    \"left_pinky1\","
+          },
+          {
+            "lineNumber": 51,
+            "text": "    \"left_pinky2\","
+          },
+          {
+            "lineNumber": 52,
+            "text": "    \"left_pinky3\","
+          },
+          {
+            "lineNumber": 53,
+            "text": "    \"left_ring1\","
+          },
+          {
+            "lineNumber": 54,
+            "text": "    \"left_ring2\","
+          },
+          {
+            "lineNumber": 55,
+            "text": "    \"left_ring3\","
+          },
+          {
+            "lineNumber": 56,
+            "text": "    \"left_thumb1\","
+          },
+          {
+            "lineNumber": 57,
+            "text": "    \"left_thumb2\","
+          },
+          {
+            "lineNumber": 58,
+            "text": "    \"left_thumb3\","
+          },
+          {
+            "lineNumber": 59,
+            "text": "    \"right_index1\","
+          },
+          {
+            "lineNumber": 60,
+            "text": "    \"right_index2\","
+          },
+          {
+            "lineNumber": 61,
+            "text": "    \"right_index3\","
+          },
+          {
+            "lineNumber": 62,
+            "text": "    \"right_middle1\","
+          },
+          {
+            "lineNumber": 63,
+            "text": "    \"right_middle2\","
+          },
+          {
+            "lineNumber": 64,
+            "text": "    \"right_middle3\","
+          },
+          {
+            "lineNumber": 65,
+            "text": "    \"right_pinky1\","
+          },
+          {
+            "lineNumber": 66,
+            "text": "    \"right_pinky2\","
+          },
+          {
+            "lineNumber": 67,
+            "text": "    \"right_pinky3\","
+          },
+          {
+            "lineNumber": 68,
+            "text": "    \"right_ring1\","
+          },
+          {
+            "lineNumber": 69,
+            "text": "    \"right_ring2\","
+          },
+          {
+            "lineNumber": 70,
+            "text": "    \"right_ring3\","
+          },
+          {
+            "lineNumber": 71,
+            "text": "    \"right_thumb1\","
+          },
+          {
+            "lineNumber": 72,
+            "text": "    \"right_thumb2\","
+          },
+          {
+            "lineNumber": 73,
+            "text": "    \"right_thumb3\","
+          },
+          {
+            "lineNumber": 74,
+            "text": "]"
+          },
+          {
+            "lineNumber": 75
+          },
+          {
+            "lineNumber": 76,
+            "text": "SMPLX_PARENTS: list[int] = ["
+          },
+          {
+            "lineNumber": 77,
+            "text": "    -1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19,"
+          },
+          {
+            "lineNumber": 78,
+            "text": "    15, 15, 15, 20, 25, 26, 20, 28, 29, 20, 31, 32"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "column": 50,
+            "line": 77
+          },
+          "startPosition": {
+            "column": 97
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.2780452072620392
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 267,
+            "text": "def _estimate_joint_positions("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 268,
+            "text": "    verts: np.ndarray,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 269,
+            "text": "    weights: np.ndarray,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 270,
+            "text": "    joint_count: int,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 271,
+            "text": ") -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 273
+          },
+          {
+            "lineNumber": 274,
+            "text": "    for ji in range(joint_count):"
+          },
+          {
+            "lineNumber": 275,
+            "text": "        w = weights[:, ji]"
+          },
+          {
+            "lineNumber": 276,
+            "text": "        total = float(w.sum())"
+          },
+          {
+            "lineNumber": 277,
+            "text": "        if total \u003e 1e-6:"
+          },
+          {
+            "lineNumber": 278,
+            "text": "            joints[ji] = (verts * w[:, None]).sum(axis=0) / total"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 279,
+            "text": "    return joints"
+          },
+          {
+            "lineNumber": 280
+          },
+          {
+            "lineNumber": 281
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 282,
+            "text": "def _read_obj_vertices(obj_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 283,
+            "text": "    \"\"\"读取 Wavefront OBJ 顶点坐标（v x y z）。\"\"\""
+          },
+          {
+            "lineNumber": 284,
+            "text": "    verts: list[list[float]] = []"
+          },
+          {
+            "lineNumber": 285,
+            "text": "    for line in obj_path.read_text(encoding=\"utf-8\").splitlines():"
+          },
+          {
+            "lineNumber": 286,
+            "text": "        if not line.startswith(\"v \"):"
+          },
+          {
+            "lineNumber": 287,
+            "text": "            continue"
+          },
+          {
+            "lineNumber": 288,
+            "text": "        parts = line.split()"
+          },
+          {
+            "lineNumber": 289,
+            "text": "        if len(parts) \u003e= 4:"
+          },
+          {
+            "lineNumber": 290,
+            "text": "            verts.append([float(parts[1]), float(parts[2]), float(parts[3])])"
+          },
+          {
+            "lineNumber": 291,
+            "text": "    if not verts:"
+          },
+          {
+            "lineNumber": 292,
+            "text": "        raise ValueError(f\"OBJ 无顶点: {obj_path}\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 293,
+            "text": "    return np.asarray(verts, dtype=np.float32)"
+          },
+          {
+            "lineNumber": 294
+          },
+          {
+            "lineNumber": 295
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 296,
+            "text": "def ensure_skeleton_rest_positions("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 297,
+            "text": "    obj_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 298,
+            "text": "    skel_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 299,
+            "text": "    weights_path: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 300,
+            "text": ") -\u003e bool:"
+          },
+          {
+            "lineNumber": 301,
+            "text": "    \"\"\"旧版 skeleton.json 缺 joint_rest_positions 时，从 OBJ + LBS 权重补全并写回。\"\"\""
+          },
+          {
+            "lineNumber": 302,
+            "text": "    skel = json.loads(skel_path.read_text(encoding=\"utf-8\"))"
+          },
+          {
+            "lineNumber": 303,
+            "text": "    joint_names: list[str] = skel.get(\"joint_names\") or []"
+          },
+          {
+            "lineNumber": 304,
+            "text": "    joints = skel.get(\"joint_rest_positions\") or []"
+          },
+          {
+            "lineNumber": 305,
+            "text": "    if joint_names and len(joints) == len(joint_names):"
+          },
+          {
+            "lineNumber": 306,
+            "text": "        return False"
+          },
+          {
+            "lineNumber": 307
+          },
+          {
+            "lineNumber": 308,
+            "text": "    if not joint_names:"
+          },
+          {
+            "lineNumber": 309,
+            "text": "        raise ValueError(f\"skeleton.json 缺少 joint_names: {skel_path}\")"
+          },
+          {
+            "lineNumber": 310
+          },
+          {
+            "lineNumber": 311,
+            "text": "    verts = _read_obj_vertices(obj_path)"
+          },
+          {
+            "lineNumber": 312,
+            "text": "    weights = np.load(weights_path)[\"weights\"]"
+          },
+          {
+            "lineNumber": 313,
+            "text": "    joint_positions = _estimate_joint_positions(verts, weights, len(joint_names))"
+          },
+          {
+            "lineNumber": 314,
+            "text": "    skel[\"joint_rest_positions\"] = joint_positions.tolist()"
+          },
+          {
+            "lineNumber": 315,
+            "text": "    skel[\"version\"] = max(int(skel.get(\"version\") or 1), 2)"
+          },
+          {
+            "lineNumber": 316,
+            "text": "    skel_path.write_text(json.dumps(skel, ensure_ascii=False, indent=2),"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 320
+          },
+          "startPosition": {
+            "line": 266
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.2762174606323242
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 83,
+            "text": "def read_gaussian_ply_xyz(ply_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 91,
+            "text": " np.asarray(vertex[\"z\"])],"
+          },
+          {
+            "lineNumber": 92,
+            "text": "            axis=1,"
+          },
+          {
+            "lineNumber": 93,
+            "text": "        ).astype(np.float32)"
+          },
+          {
+            "lineNumber": 94,
+            "text": "    except Exception:"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 95,
+            "text": "        return _read_ply_xyz_fallback(ply_path)"
+          },
+          {
+            "lineNumber": 96
+          },
+          {
+            "lineNumber": 97
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 98,
+            "text": "def _read_ply_xyz_fallback(ply_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 99,
+            "text": "    \"\"\"简易 PLY 解析（无 plyfile 时）。\"\"\""
+          },
+          {
+            "lineNumber": 100,
+            "text": "    lines = ply_path.read_text(encoding=\"utf-8\", errors=\"ignore\").splitlines()"
+          },
+          {
+            "lineNumber": 101,
+            "text": "    vertex_count = 0"
+          },
+          {
+            "lineNumber": 102,
+            "text": "    header_end = 0"
+          },
+          {
+            "lineNumber": 103,
+            "text": "    for i, line in enumerate(lines):"
+          },
+          {
+            "lineNumber": 104,
+            "text": "        if line.startswith(\"element vertex\"):"
+          },
+          {
+            "lineNumber": 105,
+            "text": "            vertex_count = int(line.split()[-1])"
+          },
+          {
+            "lineNumber": 106,
+            "text": "        if line.strip() == \"end_header\":"
+          },
+          {
+            "lineNumber": 107,
+            "text": "            header_end = i + 1"
+          },
+          {
+            "lineNumber": 108,
+            "text": "            break"
+          },
+          {
+            "lineNumber": 109,
+            "text": "    points = []"
+          },
+          {
+            "lineNumber": 110,
+            "text": "    for line in lines[header_end : header_end + vertex_count]:"
+          },
+          {
+            "lineNumber": 111,
+            "text": "        parts = line.split()"
+          },
+          {
+            "lineNumber": 112,
+            "text": "        if len(parts) \u003e= 3:"
+          },
+          {
+            "lineNumber": 113,
+            "text": "            points.append([float(parts[0]), float(parts[1]), float(parts[2])])"
+          },
+          {
+            "lineNumber": 114,
+            "text": "    if not points:"
+          },
+          {
+            "lineNumber": 115,
+            "text": "        raise ValueError(f\"无法解析 PLY: {ply_path}\")"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 115
+          },
+          "startPosition": {
+            "line": 82
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.22470569610595703
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 52,
+            "text": "@router.get(\"/health\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 53,
+            "text": "def health() -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 57
+          },
+          {
+            "lineNumber": 58,
+            "text": "        \"preload_model\": settings.preload_model,"
+          },
+          {
+            "lineNumber": 59,
+            "text": "        \"mock_mode\": settings.mock_mode,"
+          },
+          {
+            "lineNumber": 60,
+            "text": "        \"infer_low_memory\": settings.infer_low_memory,"
+          },
+          {
+            "lineNumber": 61,
+            "text": "        \"infer_max_image_size\": settings.effective_infer_max_image_size,"
+          },
+          {
+            "lineNumber": 62,
+            "text": "        \"infer_ref_view_max\": settings.effective_infer_ref_view_max,"
+          },
+          {
+            "lineNumber": 63,
+            "text": "        \"infer_anim_batch_size\": settings.effective_infer_anim_batch_size,"
+          },
+          {
+            "lineNumber": 64,
+            "text": "        \"infer_dense_sample_pts\": settings.effective_infer_dense_sample_pts,"
+          },
+          {
+            "lineNumber": 65,
+            "text": "        \"blender_available\": blender_available(),"
+          },
+          {
+            "lineNumber": 66,
+            "text": "        \"blender_fbx_ready\": blender_fbx_ready(),"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 67,
+            "text": "    }"
+          },
+          {
+            "lineNumber": 68
+          },
+          {
+            "lineNumber": 69
+          },
+          {
+            "lineNumber": 70,
+            "text": "@router.post(\"/avatars\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 71,
+            "text": "async def create_avatar("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 72,
+            "text": "    images: list[UploadFile] = File(...),"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 73,
+            "text": "    ref_view: int = Form(8),"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 74,
+            "text": "    export_skinned_mesh: bool = Form(False),"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 75,
+            "text": ") -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 76,
+            "text": "    if not images:"
+          },
+          {
+            "lineNumber": 77,
+            "text": "        raise HTTPException(400, \"请至少上传一张人物图片\")"
+          },
+          {
+            "lineNumber": 78,
+            "text": "    if len(images) \u003e settings.max_ref_images:"
+          },
+          {
+            "lineNumber": 79,
+            "text": "        raise HTTPException(400, f\"最多上传 {settings.max_ref_images} 张图片\")"
+          },
+          {
+            "lineNumber": 80
+          },
+          {
+            "lineNumber": 81,
+            "text": "    ref_view = _cap_ref_view(ref_view)"
+          },
+          {
+            "lineNumber": 82
+          },
+          {
+            "lineNumber": 83,
+            "text": "    avatar_id = str(uuid.uuid4())"
+          },
+          {
+            "lineNumber": 84,
+            "text": "    avatar_path = _avatar_dir(avatar_id)"
+          },
+          {
+            "lineNumber": 85,
+            "text": "    input_dir = avatar_path / \"inputs\""
+          },
+          {
+            "lineNumber": 86,
+            "text": "    output_dir = avatar_path / \"output\""
+          },
+          {
+            "lineNumber": 87
+          },
+          {
+            "lineNumber": 88,
+            "text": "    image_paths = await _save_uploads(images, input_dir)"
+          },
+          {
+            "lineNumber": 89,
+            "text": "    meta = {"
+          },
+          {
+            "lineNumber": 90,
+            "text": "        \"id\": avatar_id,"
+          },
+          {
+            "lineNumber": 91,
+            "text": "        \"status\": \"pending\","
+          },
+          {
+            "lineNumber": 92,
+            "text": "        \"ref_view\": ref_view,"
+          },
+          {
+            "lineNumber": 93,
+            "text": "        \"image_count\": len(image_paths),"
+          },
+          {
+            "lineNumber": 94,
+            "text": "        \"export_skinned_mesh\": export_skinned_mesh,"
+          },
+          {
+            "lineNumber": 95,
+            "text": "    }"
+          },
+          {
+            "lineNumber": 96,
+            "text": "    _save_meta(avatar_id, meta)"
+          },
+          {
+            "lineNumber": 97
+          },
+          {
+            "lineNumber": 98,
+            "text": "    job = job_manager.create(\"reconstruct\")"
+          },
+          {
+            "lineNumber": 99
+          },
+          {
+            "lineNumber": 100,
+            "text": "    def _run(_job) -\u003e None:"
+          },
+          {
+            "lineNumber": 101,
+            "text": "        job_manager.update(job.id, progress=10, message=\"正在重建 3D 模型...\")"
+          },
+          {
+            "lineNumber": 102,
+            "text": "        result = lhmpp_service.reconstruct_avatar("
+          },
+          {
+            "lineNumber": 103,
+            "text": "            image_paths,"
+          },
+          {
+            "lineNumber": 104,
+            "text": "            output_dir,"
+          },
+          {
+            "lineNumber": 105,
+            "text": "            ref_view=ref_view,"
+          },
+          {
+            "lineNumber": 106,
+            "text": "            export_skinned_mesh=export_skinned_mesh,"
+          },
+          {
+            "lineNumber": 107,
+            "text": "        )"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 115
+          },
+          "startPosition": {
+            "line": 51
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\routers\\avatars.py",
+        "signatures": {}
+      },
+      "score": 0.20808130502700806
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 39,
+            "text": "class LHMPPService:"
+          },
+          {
+            "lineNumber": 104,
+            "text": "def _initialize_models(self, root: Path) -\u003e str:"
+          },
+          {
+            "lineNumber": 151,
+            "text": ","
+          },
+          {
+            "lineNumber": 152,
+            "text": "            }"
+          },
+          {
+            "lineNumber": 153,
+            "text": "        }"
+          },
+          {
+            "lineNumber": 154
+          },
+          {
+            "lineNumber": 155,
+            "text": "        processing_list = ["
+          },
+          {
+            "lineNumber": 156,
+            "text": "            dict("
+          },
+          {
+            "lineNumber": 157,
+            "text": "                name=\"PadRatioWithScale\","
+          },
+          {
+            "lineNumber": 158,
+            "text": "                target_ratio=5 / 3,"
+          },
+          {
+            "lineNumber": 159,
+            "text": "                tgt_max_size_list=[settings.effective_infer_max_image_size],"
+          },
+          {
+            "lineNumber": 160,
+            "text": "                val=True,"
+          },
+          {
+            "lineNumber": 161,
+            "text": "            ),"
+          },
+          {
+            "lineNumber": 162,
+            "text": "        ]"
+          },
+          {
+            "lineNumber": 163,
+            "text": "        self._dataset_pipeline = SrcImagePipeline(*processing_list)"
+          },
+          {
+            "lineNumber": 164,
+            "text": "        Accelerator()"
+          },
+          {
+            "lineNumber": 165,
+            "text": "        self._cfg, _ = parse_app_configs(model_cards)"
+          },
+          {
+            "lineNumber": 166
+          },
+          {
+            "lineNumber": 167,
+            "text": "        self._lhmpp = build_app_model(self._cfg)"
+          },
+          {
+            "lineNumber": 168,
+            "text": "        self._lhmpp.to(\"cuda\")"
+          },
+          {
+            "lineNumber": 169
+          },
+          {
+            "lineNumber": 170,
+            "text": "        from services.lhm_infer_utils import apply_infer_memory_overrides"
+          },
+          {
+            "lineNumber": 171
+          },
+          {
+            "lineNumber": 172,
+            "text": "        apply_infer_memory_overrides(self._lhmpp, root)"
+          },
+          {
+            "lineNumber": 173
+          },
+          {
+            "lineNumber": 174,
+            "text": "        if self._cfg.get(\"use_smplx_shape_estimator\", True):"
+          },
+          {
+            "lineNumber": 175,
+            "text": "            from engine.pose_estimation.pose_estimator import PoseEstimator"
+          },
+          {
+            "lineNumber": 176
+          },
+          {
+            "lineNumber": 177,
+            "text": "            self._pose_estimator = PoseEstimator("
+          },
+          {
+            "lineNumber": 178,
+            "text": "                str(root / \"pretrained_models\" / \"human_model_files\"),"
+          },
+          {
+            "lineNumber": 179,
+            "text": "                device=\"cpu\","
+          },
+          {
+            "lineNumber": 180,
+            "text": "            )"
+          },
+          {
+            "lineNumber": 181,
+            "text": "            self._pose_estimator.device = \"cuda\""
+          },
+          {
+            "lineNumber": 182,
+            "text": "        else:"
+          },
+          {
+            "lineNumber": 183,
+            "text": "            self._pose_estimator = None"
+          },
+          {
+            "lineNumber": 184
+          },
+          {
+            "lineNumber": 185,
+            "text": "        return load_path"
+          },
+          {
+            "lineNumber": 186
+          },
+          {
+            "lineNumber": 187,
+            "text": "    def reconstruct_avatar("
+          },
+          {
+            "lineNumber": 188,
+            "text": "        self,"
+          },
+          {
+            "lineNumber": 189,
+            "text": "        image_paths: list[Path],"
+          },
+          {
+            "lineNumber": 190,
+            "text": "        output_dir: Path,"
+          },
+          {
+            "lineNumber": 191,
+            "text": "        ref_view: int = 8,"
+          },
+          {
+            "lineNumber": 192,
+            "text": "        export_skinned_mesh: bool = False,"
+          },
+          {
+            "lineNumber": 193,
+            "text": "    ) -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 194,
+            "text": "        output_dir.mkdir(parents=True, exist_ok=True)"
+          },
+          {
+            "lineNumber": 195,
+            "text": "        ref_view = _cap_ref_view(ref_view)"
+          },
+          {
+            "lineNumber": 196
+          },
+          {
+            "lineNumber": 197,
+            "text": "        if settings.mock_mode:"
+          },
+          {
+            "lineNumber": 198,
+            "text": "            ply_path = output_dir / \"avatar.ply\""
+          },
+          {
+            "lineNumber": 199,
+            "text": "            ply_path.write_text(\"# mock gaussian splat ply\\n\", encoding=\"utf-8\")"
+          },
+          {
+            "lineNumber": 200,
+            "text": "            preview = output_dir / \"preview.png\""
+          },
+          {
+            "lineNumber": 201,
+            "text": "            if image_paths:"
+          },
+          {
+            "lineNumber": 202,
+            "text": "                from shutil import copyfile"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 466
+          },
+          "startPosition": {
+            "line": 38
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\lhmpp_service.py",
+        "signatures": {
+          "ranges": [
+            {
+              "endPosition": {
+                "column": 5,
+                "line": 14
+              },
+              "startPosition": {
+                "column": 1,
+                "line": 13
+              }
+            },
+            {
+              "endPosition": {
+                "column": 9,
+                "line": 41
+              },
+              "startPosition": {
+                "column": 5,
+                "line": 40
+              }
+            }
+          ]
+        }
+      },
+      "score": 0.2055172324180603
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 119,
+            "text": "@router.get(\"/avatars/{avatar_id}\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 120,
+            "text": "def get_avatar(avatar_id: str) -\u003e dict[str, Any]:"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 121,
+            "text": "    return _load_meta(avatar_id)"
+          },
+          {
+            "lineNumber": 122
+          },
+          {
+            "lineNumber": 123
+          },
+          {
+            "lineNumber": 124,
+            "text": "@router.get(\"/avatars/{avatar_id}/model\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 125,
+            "text": "def download_model(avatar_id: str):"
+          },
+          {
+            "lineNumber": 126,
+            "text": "    meta = _load_meta(avatar_id)"
+          },
+          {
+            "lineNumber": 127,
+            "text": "    ply = meta.get(\"ply_path\")"
+          },
+          {
+            "lineNumber": 128,
+            "text": "    if not ply or not Path(ply).exists():"
+          },
+          {
+            "lineNumber": 129,
+            "text": "        raise HTTPException(404, \"3D 模型尚未生成\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 130,
+            "text": "    return FileResponse(ply, filename=\"avatar.ply\", media_type=\"application/octet-stream\")"
+          },
+          {
+            "lineNumber": 131
+          },
+          {
+            "lineNumber": 132
+          },
+          {
+            "lineNumber": 133,
+            "text": "@router.get(\"/avatars/{avatar_id}/mesh/texture\")"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 134,
+            "text": "def download_mesh_texture(avatar_id: str):"
+          },
+          {
+            "lineNumber": 135,
+            "text": "    \"\"\"烘焙的 avatar_diffuse.png（FBX 未内嵌贴图时供 3dviewer 单独加载）。\"\"\""
+          },
+          {
+            "lineNumber": 136,
+            "text": "    meta = _load_meta(avatar_id)"
+          },
+          {
+            "lineNumber": 137,
+            "text": "    path = meta.get(\"mesh_texture_path\")"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 144
+          },
+          "startPosition": {
+            "column": 74,
+            "line": 115
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\routers\\avatars.py",
+        "signatures": {}
+      },
+      "score": 0.20223310589790344
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 1,
+            "text": "v -0.200000 0.000000 -0.100000"
+          },
+          {
+            "lineNumber": 2,
+            "text": "v 0.200000 0.000000 -0.100000"
+          },
+          {
+            "lineNumber": 3,
+            "text": "v 0.200000 1.200000 -0.100000"
+          },
+          {
+            "lineNumber": 4,
+            "text": "v -0.200000 1.200000 -0.100000"
+          },
+          {
+            "lineNumber": 5,
+            "text": "v -0.200000 0.000000 0.100000"
+          },
+          {
+            "lineNumber": 6,
+            "text": "v 0.200000 0.000000 0.100000"
+          },
+          {
+            "lineNumber": 7,
+            "text": "v 0.200000 1.200000 0.100000"
+          },
+          {
+            "lineNumber": 8,
+            "text": "v -0.200000 1.200000 0.100000"
+          },
+          {
+            "lineNumber": 9,
+            "text": "v -0.150000 1.250000 -0.080000"
+          },
+          {
+            "lineNumber": 10,
+            "text": "v 0.150000 1.250000 -0.080000"
+          },
+          {
+            "lineNumber": 11,
+            "text": "v 0.150000 1.550000 -0.080000"
+          },
+          {
+            "lineNumber": 12,
+            "text": "v -0.150000 1.550000 -0.080000"
+          },
+          {
+            "lineNumber": 13,
+            "text": "v -0.150000 1.250000 0.080000"
+          },
+          {
+            "lineNumber": 14,
+            "text": "v 0.150000 1.250000 0.080000"
+          },
+          {
+            "lineNumber": 15,
+            "text": "v 0.150000 1.550000 0.080000"
+          },
+          {
+            "lineNumber": 16,
+            "text": "v -0.150000 1.550000 0.080000"
+          },
+          {
+            "lineNumber": 17,
+            "text": "f 1 2 3"
+          },
+          {
+            "lineNumber": 18,
+            "text": "f 1 3 4"
+          },
+          {
+            "lineNumber": 19,
+            "text": "f 5 7 6"
+          },
+          {
+            "lineNumber": 20,
+            "text": "f 5 8 7"
+          },
+          {
+            "lineNumber": 21,
+            "text": "f 1 5 6"
+          },
+          {
+            "lineNumber": 22,
+            "text": "f 1 6 2"
+          },
+          {
+            "lineNumber": 23,
+            "text": "f 3 7 8"
+          },
+          {
+            "lineNumber": 24,
+            "text": "f 3 8 4"
+          },
+          {
+            "lineNumber": 25,
+            "text": "f 9 10 11"
+          },
+          {
+            "lineNumber": 26,
+            "text": "f 9 11 12"
+          },
+          {
+            "lineNumber": 27,
+            "text": "f 13 15 14"
+          },
+          {
+            "lineNumber": 28,
+            "text": "f 13 16 15"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "column": 10,
+            "line": 27
+          },
+          "startPosition": {}
+        },
+        "relativeWorkspacePath": ".\\api\\data\\test_mesh\\avatar_skinned.obj",
+        "signatures": {}
+      },
+      "score": 0.19580835103988647
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 1,
+            "text": "v -0.200000 0.000000 -0.100000"
+          },
+          {
+            "lineNumber": 2,
+            "text": "v 0.200000 0.000000 -0.100000"
+          },
+          {
+            "lineNumber": 3,
+            "text": "v 0.200000 1.200000 -0.100000"
+          },
+          {
+            "lineNumber": 4,
+            "text": "v -0.200000 1.200000 -0.100000"
+          },
+          {
+            "lineNumber": 5,
+            "text": "v -0.200000 0.000000 0.100000"
+          },
+          {
+            "lineNumber": 6,
+            "text": "v 0.200000 0.000000 0.100000"
+          },
+          {
+            "lineNumber": 7,
+            "text": "v 0.200000 1.200000 0.100000"
+          },
+          {
+            "lineNumber": 8,
+            "text": "v -0.200000 1.200000 0.100000"
+          },
+          {
+            "lineNumber": 9,
+            "text": "v -0.150000 1.250000 -0.080000"
+          },
+          {
+            "lineNumber": 10,
+            "text": "v 0.150000 1.250000 -0.080000"
+          },
+          {
+            "lineNumber": 11,
+            "text": "v 0.150000 1.550000 -0.080000"
+          },
+          {
+            "lineNumber": 12,
+            "text": "v -0.150000 1.550000 -0.080000"
+          },
+          {
+            "lineNumber": 13,
+            "text": "v -0.150000 1.250000 0.080000"
+          },
+          {
+            "lineNumber": 14,
+            "text": "v 0.150000 1.250000 0.080000"
+          },
+          {
+            "lineNumber": 15,
+            "text": "v 0.150000 1.550000 0.080000"
+          },
+          {
+            "lineNumber": 16,
+            "text": "v -0.150000 1.550000 0.080000"
+          },
+          {
+            "lineNumber": 17,
+            "text": "f 1 2 3"
+          },
+          {
+            "lineNumber": 18,
+            "text": "f 1 3 4"
+          },
+          {
+            "lineNumber": 19,
+            "text": "f 5 7 6"
+          },
+          {
+            "lineNumber": 20,
+            "text": "f 5 8 7"
+          },
+          {
+            "lineNumber": 21,
+            "text": "f 1 5 6"
+          },
+          {
+            "lineNumber": 22,
+            "text": "f 1 6 2"
+          },
+          {
+            "lineNumber": 23,
+            "text": "f 3 7 8"
+          },
+          {
+            "lineNumber": 24,
+            "text": "f 3 8 4"
+          },
+          {
+            "lineNumber": 25,
+            "text": "f 9 10 11"
+          },
+          {
+            "lineNumber": 26,
+            "text": "f 9 11 12"
+          },
+          {
+            "lineNumber": 27,
+            "text": "f 13 15 14"
+          },
+          {
+            "lineNumber": 28,
+            "text": "f 13 16 15"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "column": 10,
+            "line": 27
+          },
+          "startPosition": {}
+        },
+        "relativeWorkspacePath": ".\\api\\data\\test_mesh2\\avatar_skinned.obj",
+        "signatures": {}
+      },
+      "score": 0.18806150555610657
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 119,
+            "text": "def _load_smplx_mesh("
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 120,
+            "text": "    lhm_root: Path,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 121,
+            "text": "    betas: Optional[np.ndarray] = None,"
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 122,
+            "text": ") -\u003e tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:"
+          },
+          {
+            "lineNumber": 165
+          },
+          {
+            "lineNumber": 166,
+            "text": "    else:"
+          },
+          {
+            "lineNumber": 167,
+            "text": "        j_reg = getattr(layer.bm_x, \"J_regressor\", None)"
+          },
+          {
+            "lineNumber": 168,
+            "text": "        if j_reg is not None:"
+          },
+          {
+            "lineNumber": 169,
+            "text": "            import torch"
+          },
+          {
+            "lineNumber": 170
+          },
+          {
+            "lineNumber": 171,
+            "text": "            jv = torch.tensor(verts, dtype=torch.float32, device=j_reg.device)"
+          },
+          {
+            "lineNumber": 172,
+            "text": "            joints = torch.matmul(j_reg, jv).detach().cpu().numpy().astype(np.float32)"
+          },
+          {
+            "lineNumber": 173,
+            "text": "        else:"
+          },
+          {
+            "lineNumber": 174,
+            "text": "            joints = _estimate_joint_positions(verts, weights, len(joint_names))"
+          },
+          {
+            "lineNumber": 175
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 176,
+            "text": "    return verts, faces, weights, joint_names, joints"
+          },
+          {
+            "lineNumber": 177
+          },
+          {
+            "lineNumber": 178
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 179,
+            "text": "def _lhm_canonical_poses_tensor(device: torch.device) -\u003e torch.Tensor:"
+          },
+          {
+            "lineNumber": 180,
+            "text": "    \"\"\"LHM++ &#96;&#96;cano_body_pose_template&#96;&#96; 对应的 53 关节 axis-angle。\"\"\""
+          },
+          {
+            "lineNumber": 181,
+            "text": "    import math"
+          },
+          {
+            "lineNumber": 182,
+            "text": "    import torch"
+          },
+          {
+            "lineNumber": 183
+          },
+          {
+            "lineNumber": 184,
+            "text": "    poses = torch.zeros(1, 53, 3, device=device)"
+          },
+          {
+            "lineNumber": 185,
+            "text": "    # body_pose[0,1] -\u003e left/right hip z（SMPL-X 关节 1,2）"
+          },
+          {
+            "lineNumber": 186,
+            "text": "    poses[0, 1, 2] = math.pi / 12"
+          },
+          {
+            "lineNumber": 187,
+            "text": "    poses[0, 2, 2] = -math.pi / 12"
+          },
+          {
+            "lineNumber": 188,
+            "text": "    # body_pose[15,16] -\u003e left/right wrist z（关节 20,21）"
+          },
+          {
+            "lineNumber": 189,
+            "text": "    poses[0, 20, 2] = -math.pi / 6"
+          },
+          {
+            "lineNumber": 190,
+            "text": "    poses[0, 21, 2] = math.pi / 6"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 190
+          },
+          "startPosition": {
+            "line": 118
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.18631529808044434
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 76,
+            "text": "SMPLX_PARENTS: list[int] = ["
+          },
+          {
+            "lineNumber": 77,
+            "text": "    -1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19,"
+          },
+          {
+            "lineNumber": 78,
+            "text": "    15, 15, 15, 20, 25, 26, 20, 28, 29, 20, 31, 32, 20, 34, 35, 20, 37, 38,"
+          },
+          {
+            "lineNumber": 79,
+            "text": "    21, 40, 41, 21, 43, 44, 21, 46, 47, 21, 49, 50, 21, 52, 53,"
+          },
+          {
+            "lineNumber": 80,
+            "text": "]"
+          },
+          {
+            "lineNumber": 81
+          },
+          {
+            "lineNumber": 82
+          },
+          {
+            "isSignature": true,
+            "lineNumber": 83,
+            "text": "def read_gaussian_ply_xyz(ply_path: Path) -\u003e np.ndarray:"
+          },
+          {
+            "lineNumber": 84,
+            "text": "    \"\"\"读取 3DGS PLY 中的高斯中心坐标。\"\"\""
+          },
+          {
+            "lineNumber": 85,
+            "text": "    try:"
+          },
+          {
+            "lineNumber": 86,
+            "text": "        from plyfile import PlyData"
+          },
+          {
+            "lineNumber": 87
+          },
+          {
+            "lineNumber": 88,
+            "text": "        ply = PlyData.read(str(ply_path))"
+          },
+          {
+            "lineNumber": 89,
+            "text": "        vertex = ply[\"vertex\"]"
+          },
+          {
+            "lineNumber": 90,
+            "text": "        return np.stack("
+          },
+          {
+            "lineNumber": 91,
+            "text": "            [np.asarray(vertex[\"x\"]), np.asarray(vertex[\"y\"]), np.asarray(vertex[\"z\"])],"
+          },
+          {
+            "lineNumber": 92,
+            "text": "            axis=1,"
+          },
+          {
+            "lineNumber": 93,
+            "text": "        ).astype(np.float32)"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 94
+          },
+          "startPosition": {
+            "column": 1,
+            "line": 73
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\mesh_export_service.py",
+        "signatures": {}
+      },
+      "score": 0.1830243021249771
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 39,
+            "text": "class LHMPPService:"
+          },
+          {
+            "lineNumber": 187,
+            "text": "def reconstruct_avatar("
+          },
+          {
+            "lineNumber": 188,
+            "text": "        self,"
+          },
+          {
+            "lineNumber": 189,
+            "text": "        image_paths: list[Path],"
+          },
+          {
+            "lineNumber": 190,
+            "text": "        output_dir: Path,"
+          },
+          {
+            "lineNumber": 191,
+            "text": "        ref_view: int = 8,"
+          },
+          {
+            "lineNumber": 192,
+            "text": "        export_skinned_mesh: bool = False,"
+          },
+          {
+            "lineNumber": 193,
+            "text": "    ) -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 200
+          },
+          {
+            "lineNumber": 201,
+            "text": "            if image_paths:"
+          },
+          {
+            "lineNumber": 202,
+            "text": "                from shutil import copyfile"
+          },
+          {
+            "lineNumber": 203
+          },
+          {
+            "lineNumber": 204,
+            "text": "                copyfile(image_paths[0], preview)"
+          },
+          {
+            "lineNumber": 205,
+            "text": "            result: dict[str, Any] = {"
+          },
+          {
+            "lineNumber": 206,
+            "text": "                \"ply_path\": str(ply_path),"
+          },
+          {
+            "lineNumber": 207,
+            "text": "                \"preview_path\": str(preview) if preview.exists() else None,"
+          },
+          {
+            "lineNumber": 208,
+            "text": "                \"ref_count\": len(image_paths),"
+          },
+          {
+            "lineNumber": 209,
+            "text": "                \"export_skinned_mesh\": export_skinned_mesh,"
+          },
+          {
+            "lineNumber": 210,
+            "text": "                \"mock\": True,"
+          },
+          {
+            "lineNumber": 211,
+            "text": "            }"
+          },
+          {
+            "lineNumber": 212,
+            "text": "            if export_skinned_mesh:"
+          },
+          {
+            "lineNumber": 213,
+            "text": "                from services.mesh_export_service import export_skinned_mesh_from_gaussian"
+          },
+          {
+            "lineNumber": 214
+          },
+          {
+            "lineNumber": 215,
+            "text": "                mesh_result = export_skinned_mesh_from_gaussian(ply_path, output_dir)"
+          },
+          {
+            "lineNumber": 216,
+            "text": "                result.update(mesh_result)"
+          },
+          {
+            "lineNumber": 217,
+            "text": "            return result"
+          },
+          {
+            "lineNumber": 218
+          },
+          {
+            "lineNumber": 219,
+            "text": "        # 重建走 to_gs_ply 单进程加载；勿先 initialize()，否则与子进程/二次加载争用显存导致 OOM。"
+          },
+          {
+            "lineNumber": 220,
+            "text": "        root = self._ensure_lhm_path()"
+          },
+          {
+            "lineNumber": 221
+          },
+          {
+            "lineNumber": 222,
+            "text": "        with self._lhm_runtime(root):"
+          },
+          {
+            "lineNumber": 223,
+            "text": "            return self._reconstruct_avatar_real("
+          },
+          {
+            "lineNumber": 224,
+            "text": "                image_paths,"
+          },
+          {
+            "lineNumber": 225,
+            "text": "                output_dir,"
+          },
+          {
+            "lineNumber": 226,
+            "text": "                root,"
+          },
+          {
+            "lineNumber": 227,
+            "text": "                ref_view=ref_view,"
+          },
+          {
+            "lineNumber": 228,
+            "text": "                export_skinned_mesh=export_skinned_mesh,"
+          },
+          {
+            "lineNumber": 229,
+            "text": "            )"
+          },
+          {
+            "lineNumber": 230
+          },
+          {
+            "lineNumber": 231,
+            "text": "    def _reconstruct_avatar_real("
+          },
+          {
+            "lineNumber": 232,
+            "text": "        self,"
+          },
+          {
+            "lineNumber": 233,
+            "text": "        image_paths: list[Path],"
+          },
+          {
+            "lineNumber": 234,
+            "text": "        output_dir: Path,"
+          },
+          {
+            "lineNumber": 235,
+            "text": "        root: Path,"
+          },
+          {
+            "lineNumber": 236,
+            "text": "        *,"
+          },
+          {
+            "lineNumber": 237,
+            "text": "        ref_view: int,"
+          },
+          {
+            "lineNumber": 238,
+            "text": "        export_skinned_mesh: bool,"
+          },
+          {
+            "lineNumber": 239,
+            "text": "    ) -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 240,
+            "text": "        import torch"
+          },
+          {
+            "lineNumber": 241,
+            "text": "        from shutil import copy2"
+          },
+          {
+            "lineNumber": 242,
+            "text": "        from types import SimpleNamespace"
+          },
+          {
+            "lineNumber": 243
+          },
+          {
+            "lineNumber": 244,
+            "text": "        ref_view = _cap_ref_view(ref_view)"
+          },
+          {
+            "lineNumber": 245
+          },
+          {
+            "lineNumber": 246,
+            "text": "        os.environ.update("
+          },
+          {
+            "lineNumber": 247,
+            "text": "            {"
+          },
+          {
+            "lineNumber": 248,
+            "text": "                \"APP_ENABLED\": \"1\","
+          },
+          {
+            "lineNumber": 249,
+            "text": "                \"APP_MODEL_NAME\": settings.model_name,"
+          },
+          {
+            "lineNumber": 250,
+            "text": "                \"APP_TYPE\": \"infer.human_lrm_a4o\","
+          },
+          {
+            "lineNumber": 251,
+            "text": "                \"NUMBA_THREADING_LAYER\": \"omp\","
+          },
+          {
+            "lineNumber": 252,
+            "text": "            }"
+          },
+          {
+            "lineNumber": 253,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 254,
+            "text": "        torch._dynamo.config.disable = True"
+          },
+          {
+            "lineNumber": 255
+          },
+          {
+            "lineNumber": 256,
+            "text": "        image_glob_dir = output_dir / \"ref_images\""
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 466
+          },
+          "startPosition": {
+            "line": 38
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\lhmpp_service.py",
+        "signatures": {
+          "ranges": [
+            {
+              "endPosition": {
+                "column": 5,
+                "line": 14
+              },
+              "startPosition": {
+                "column": 1,
+                "line": 13
+              }
+            },
+            {
+              "endPosition": {
+                "column": 9,
+                "line": 41
+              },
+              "startPosition": {
+                "column": 5,
+                "line": 40
+              }
+            }
+          ]
+        }
+      },
+      "score": 0.18200933933258057
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 39,
+            "text": "class LHMPPService:"
+          },
+          {
+            "lineNumber": 83,
+            "text": "def initialize(self) -\u003e None:"
+          },
+          {
+            "lineNumber": 96
+          },
+          {
+            "lineNumber": 97,
+            "text": "        logger.info("
+          },
+          {
+            "lineNumber": 98,
+            "text": "            \"LHM++ 模型加载完成 | model=%s path=%s pose_estimator=%s device=cuda\","
+          },
+          {
+            "lineNumber": 99,
+            "text": "            settings.model_name,"
+          },
+          {
+            "lineNumber": 100,
+            "text": "            load_path,"
+          },
+          {
+            "lineNumber": 101,
+            "text": "            \"on\" if self._pose_estimator else \"off\","
+          },
+          {
+            "lineNumber": 102,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 103
+          },
+          {
+            "lineNumber": 104,
+            "text": "    def _initialize_models(self, root: Path) -\u003e str:"
+          },
+          {
+            "lineNumber": 105,
+            "text": "        os.environ.update("
+          },
+          {
+            "lineNumber": 106,
+            "text": "            {"
+          },
+          {
+            "lineNumber": 107,
+            "text": "                \"APP_ENABLED\": \"1\","
+          },
+          {
+            "lineNumber": 108,
+            "text": "                \"APP_MODEL_NAME\": settings.model_name,"
+          },
+          {
+            "lineNumber": 109,
+            "text": "                \"APP_TYPE\": \"infer.human_lrm_a4o\","
+          },
+          {
+            "lineNumber": 110,
+            "text": "                \"NUMBA_THREADING_LAYER\": \"omp\","
+          },
+          {
+            "lineNumber": 111,
+            "text": "            }"
+          },
+          {
+            "lineNumber": 112,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 113
+          },
+          {
+            "lineNumber": 114,
+            "text": "        import torch"
+          },
+          {
+            "lineNumber": 115
+          },
+          {
+            "lineNumber": 116,
+            "text": "        torch._dynamo.config.disable = True"
+          },
+          {
+            "lineNumber": 117
+          },
+          {
+            "lineNumber": 118,
+            "text": "        from accelerate import Accelerator"
+          },
+          {
+            "lineNumber": 119,
+            "text": "        from core.datasets.data_utils import SrcImagePipeline"
+          },
+          {
+            "lineNumber": 120,
+            "text": "        from core.utils.model_card import MODEL_CONFIG"
+          },
+          {
+            "lineNumber": 121,
+            "text": "        from core.utils.model_download_utils import AutoModelQuery"
+          },
+          {
+            "lineNumber": 122,
+            "text": "        from scripts.download_motion_video import motion_video_check"
+          },
+          {
+            "lineNumber": 123,
+            "text": "        from scripts.inference.app_inference import ("
+          },
+          {
+            "lineNumber": 124,
+            "text": "            build_app_model,"
+          },
+          {
+            "lineNumber": 125,
+            "text": "            parse_app_configs,"
+          },
+          {
+            "lineNumber": 126,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 127
+          },
+          {
+            "lineNumber": 128,
+            "text": "        _prior_model_check(root / \"pretrained_models\")"
+          },
+          {
+            "lineNumber": 129,
+            "text": "        motion_video_check(save_dir=str(root))"
+          },
+          {
+            "lineNumber": 130
+          },
+          {
+            "lineNumber": 131,
+            "text": "        model_config = MODEL_CONFIG[settings.model_name]"
+          },
+          {
+            "lineNumber": 132,
+            "text": "        if settings.model_path:"
+          },
+          {
+            "lineNumber": 133,
+            "text": "            model_path = settings.model_path"
+          },
+          {
+            "lineNumber": 134,
+            "text": "        else:"
+          },
+          {
+            "lineNumber": 135,
+            "text": "            auto_query = AutoModelQuery(save_dir=str(root / \"pretrained_models\"))"
+          },
+          {
+            "lineNumber": 136,
+            "text": "            model_path = auto_query.query(settings.model_name)"
+          },
+          {
+            "lineNumber": 137
+          },
+          {
+            "lineNumber": 138,
+            "text": "        load_path = model_path"
+          },
+          {
+            "lineNumber": 139,
+            "text": "        target_dense = settings.effective_infer_dense_sample_pts"
+          },
+          {
+            "lineNumber": 140,
+            "text": "        if target_dense \u003e 0:"
+          },
+          {
+            "lineNumber": 141,
+            "text": "            from services.lhm_infer_utils import prepare_patched_model_path"
+          },
+          {
+            "lineNumber": 142
+          },
+          {
+            "lineNumber": 143,
+            "text": "            infer_work = root / \"infer_work\""
+          },
+          {
+            "lineNumber": 144,
+            "text": "            load_path, _ = prepare_patched_model_path("
+          },
+          {
+            "lineNumber": 145,
+            "text": "                model_path, root, infer_work, target_dense"
+          },
+          {
+            "lineNumber": 146,
+            "text": "            )"
+          },
+          {
+            "lineNumber": 147
+          },
+          {
+            "lineNumber": 148,
+            "text": "        model_cards = {"
+          },
+          {
+            "lineNumber": 149,
+            "text": "            settings.model_name: {"
+          },
+          {
+            "lineNumber": 150,
+            "text": "                \"model_path\": load_path,"
+          },
+          {
+            "lineNumber": 151,
+            "text": "                \"model_config\": model_config,"
+          },
+          {
+            "lineNumber": 152,
+            "text": "            }"
+          },
+          {
+            "lineNumber": 153,
+            "text": "        }"
+          },
+          {
+            "lineNumber": 154
+          },
+          {
+            "lineNumber": 155,
+            "text": "        processing_list = ["
+          },
+          {
+            "lineNumber": 156,
+            "text": "            dict("
+          },
+          {
+            "lineNumber": 157,
+            "text": "                name=\"PadRatioWithScale\","
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 466
+          },
+          "startPosition": {
+            "line": 38
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\lhmpp_service.py",
+        "signatures": {
+          "ranges": [
+            {
+              "endPosition": {
+                "column": 5,
+                "line": 14
+              },
+              "startPosition": {
+                "column": 1,
+                "line": 13
+              }
+            },
+            {
+              "endPosition": {
+                "column": 9,
+                "line": 41
+              },
+              "startPosition": {
+                "column": 5,
+                "line": 40
+              }
+            }
+          ]
+        }
+      },
+      "score": 0.17745214700698853
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 1,
+            "text": "{"
+          },
+          {
+            "lineNumber": 2,
+            "text": "  \"format\": \"SMPL-X-skinned-mesh\","
+          },
+          {
+            "lineNumber": 3,
+            "text": "  \"version\": 1,"
+          },
+          {
+            "lineNumber": 4,
+            "text": "  \"joint_count\": 55,"
+          },
+          {
+            "lineNumber": 5,
+            "text": "  \"joint_names\": ["
+          },
+          {
+            "lineNumber": 6,
+            "text": "    \"pelvis\","
+          },
+          {
+            "lineNumber": 7,
+            "text": "    \"left_hip\","
+          },
+          {
+            "lineNumber": 8,
+            "text": "    \"right_hip\","
+          },
+          {
+            "lineNumber": 9,
+            "text": "    \"spine1\","
+          },
+          {
+            "lineNumber": 10,
+            "text": "    \"left_knee\","
+          },
+          {
+            "lineNumber": 11,
+            "text": "    \"right_knee\","
+          },
+          {
+            "lineNumber": 12,
+            "text": "    \"spine2\","
+          },
+          {
+            "lineNumber": 13,
+            "text": "    \"left_ankle\","
+          },
+          {
+            "lineNumber": 14,
+            "text": "    \"right_ankle\","
+          },
+          {
+            "lineNumber": 15,
+            "text": "    \"spine3\","
+          },
+          {
+            "lineNumber": 16,
+            "text": "    \"left_foot\","
+          },
+          {
+            "lineNumber": 17,
+            "text": "    \"right_foot\","
+          },
+          {
+            "lineNumber": 18,
+            "text": "    \"neck\","
+          },
+          {
+            "lineNumber": 19,
+            "text": "    \"left_collar\","
+          },
+          {
+            "lineNumber": 20,
+            "text": "    \"right_collar\","
+          },
+          {
+            "lineNumber": 21,
+            "text": "    \"head\","
+          },
+          {
+            "lineNumber": 22,
+            "text": "    \"left_shoulder\","
+          },
+          {
+            "lineNumber": 23,
+            "text": "    \"right_shoulder\","
+          },
+          {
+            "lineNumber": 24,
+            "text": "    \"left_elbow\","
+          },
+          {
+            "lineNumber": 25,
+            "text": "    \"right_elbow\","
+          },
+          {
+            "lineNumber": 26,
+            "text": "    \"left_wrist\","
+          },
+          {
+            "lineNumber": 27,
+            "text": "    \"right_wrist\","
+          },
+          {
+            "lineNumber": 28,
+            "text": "    \"jaw\","
+          },
+          {
+            "lineNumber": 29,
+            "text": "    \"left_eye_smplhf\","
+          },
+          {
+            "lineNumber": 30,
+            "text": "    \"right_eye_smplhf\","
+          },
+          {
+            "lineNumber": 31,
+            "text": "    \"left_index1\","
+          },
+          {
+            "lineNumber": 32,
+            "text": "    \"left_index2\","
+          },
+          {
+            "lineNumber": 33,
+            "text": "    \"left_index3\","
+          },
+          {
+            "lineNumber": 34,
+            "text": "    \"left_middle1\","
+          },
+          {
+            "lineNumber": 35,
+            "text": "    \"left_middle2\","
+          },
+          {
+            "lineNumber": 36,
+            "text": "    \"left_middle3\","
+          },
+          {
+            "lineNumber": 37,
+            "text": "    \"left_pinky1\","
+          },
+          {
+            "lineNumber": 38,
+            "text": "    \"left_pinky2\","
+          },
+          {
+            "lineNumber": 39,
+            "text": "    \"left_pinky3\","
+          },
+          {
+            "lineNumber": 40,
+            "text": "    \"left_ring1\","
+          },
+          {
+            "lineNumber": 41,
+            "text": "    \"left_ring2\","
+          },
+          {
+            "lineNumber": 42,
+            "text": "    \"left_ring3\","
+          },
+          {
+            "lineNumber": 43,
+            "text": "    \"left_thumb1\","
+          },
+          {
+            "lineNumber": 44,
+            "text": "    \"left_thumb2\","
+          },
+          {
+            "lineNumber": 45,
+            "text": "    \"left_thumb3\","
+          },
+          {
+            "lineNumber": 46,
+            "text": "    \"right_index1\","
+          },
+          {
+            "lineNumber": 47,
+            "text": "    \"right_index2\","
+          },
+          {
+            "lineNumber": 48,
+            "text": "    \"right_index3\","
+          },
+          {
+            "lineNumber": 49,
+            "text": "    \"right_middle1\","
+          },
+          {
+            "lineNumber": 50,
+            "text": "    \"right_middle2\","
+          },
+          {
+            "lineNumber": 51,
+            "text": "    \"right_middle3\","
+          },
+          {
+            "lineNumber": 52,
+            "text": "    \"right_pinky1\","
+          },
+          {
+            "lineNumber": 53,
+            "text": "    \"right_pinky2\","
+          },
+          {
+            "lineNumber": 54,
+            "text": "    \"right_pinky3\","
+          },
+          {
+            "lineNumber": 55,
+            "text": "    \"right_ring1\","
+          },
+          {
+            "lineNumber": 56,
+            "text": "    \"right_ring2\","
+          },
+          {
+            "lineNumber": 57,
+            "text": "    \"right_ring3\","
+          },
+          {
+            "lineNumber": 58,
+            "text": "    \"right_thumb1\","
+          },
+          {
+            "lineNumber": 59,
+            "text": "    \"right_thumb2\","
+          },
+          {
+            "lineNumber": 60,
+            "text": "    \"right_thumb3\""
+          },
+          {
+            "lineNumber": 61,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 62,
+            "text": "  \"parents\": ["
+          },
+          {
+            "lineNumber": 63,
+            "text": "    -1,"
+          },
+          {
+            "lineNumber": 64,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 65,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 66,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 67,
+            "text": "    1,"
+          },
+          {
+            "lineNumber": 68,
+            "text": "    2,"
+          },
+          {
+            "lineNumber": 69,
+            "text": "    3,"
+          },
+          {
+            "lineNumber": 70,
+            "text": "    4,"
+          },
+          {
+            "lineNumber": 71,
+            "text": "    5,"
+          },
+          {
+            "lineNumber": 72,
+            "text": "    6,"
+          },
+          {
+            "lineNumber": 73,
+            "text": "    7,"
+          },
+          {
+            "lineNumber": 74,
+            "text": "    8,"
+          },
+          {
+            "lineNumber": 75,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 76,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 77,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 78,
+            "text": "    12,"
+          },
+          {
+            "lineNumber": 79,
+            "text": "    13,"
+          },
+          {
+            "lineNumber": 80,
+            "text": "    14,"
+          },
+          {
+            "lineNumber": 81,
+            "text": "    16,"
+          },
+          {
+            "lineNumber": 82,
+            "text": "    17,"
+          },
+          {
+            "lineNumber": 83,
+            "text": "    18,"
+          },
+          {
+            "lineNumber": 84,
+            "text": "    19,"
+          },
+          {
+            "lineNumber": 85,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 86,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 87,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 88,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 89,
+            "text": "    25,"
+          },
+          {
+            "lineNumber": 90,
+            "text": "    26,"
+          },
+          {
+            "lineNumber": 91,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 92,
+            "text": "    28,"
+          },
+          {
+            "lineNumber": 93,
+            "text": "    29,"
+          },
+          {
+            "lineNumber": 94,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 95,
+            "text": "    31,"
+          },
+          {
+            "lineNumber": 96,
+            "text": "    32,"
+          },
+          {
+            "lineNumber": 97,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 98,
+            "text": "    34,"
+          },
+          {
+            "lineNumber": 99,
+            "text": "    35,"
+          },
+          {
+            "lineNumber": 100,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 101,
+            "text": "    37,"
+          },
+          {
+            "lineNumber": 102,
+            "text": "    38,"
+          },
+          {
+            "lineNumber": 103,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 104,
+            "text": "    40,"
+          },
+          {
+            "lineNumber": 105,
+            "text": "    41,"
+          },
+          {
+            "lineNumber": 106,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 107,
+            "text": "    43,"
+          },
+          {
+            "lineNumber": 108,
+            "text": "    44,"
+          },
+          {
+            "lineNumber": 109,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 110,
+            "text": "    46,"
+          },
+          {
+            "lineNumber": 111,
+            "text": "    47,"
+          },
+          {
+            "lineNumber": 112,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 113,
+            "text": "    49,"
+          },
+          {
+            "lineNumber": 114,
+            "text": "    50,"
+          },
+          {
+            "lineNumber": 115,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 116,
+            "text": "    52,"
+          },
+          {
+            "lineNumber": 117,
+            "text": "    53"
+          },
+          {
+            "lineNumber": 118,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 119,
+            "text": "  \"betas\": ["
+          },
+          {
+            "lineNumber": 120,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 121,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 122,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 123,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 124,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 125,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 126,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 127,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 128,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 129,
+            "text": "    0.0"
+          },
+          {
+            "lineNumber": 130,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 131,
+            "text": "  \"weights_sparse\": ["
+          },
+          {
+            "lineNumber": 132,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 133,
+            "text": "      \"vertex\": 0,"
+          },
+          {
+            "lineNumber": 134,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 135,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 136,
+            "text": "      ],"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 136
+          },
+          "startPosition": {}
+        },
+        "relativeWorkspacePath": ".\\api\\data\\test_mesh\\avatar_skeleton.json",
+        "signatures": {}
+      },
+      "score": 0.17630839347839355
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 1,
+            "text": "{"
+          },
+          {
+            "lineNumber": 2,
+            "text": "  \"format\": \"SMPL-X-skinned-mesh\","
+          },
+          {
+            "lineNumber": 3,
+            "text": "  \"version\": 1,"
+          },
+          {
+            "lineNumber": 4,
+            "text": "  \"joint_count\": 55,"
+          },
+          {
+            "lineNumber": 5,
+            "text": "  \"joint_names\": ["
+          },
+          {
+            "lineNumber": 6,
+            "text": "    \"pelvis\","
+          },
+          {
+            "lineNumber": 7,
+            "text": "    \"left_hip\","
+          },
+          {
+            "lineNumber": 8,
+            "text": "    \"right_hip\","
+          },
+          {
+            "lineNumber": 9,
+            "text": "    \"spine1\","
+          },
+          {
+            "lineNumber": 10,
+            "text": "    \"left_knee\","
+          },
+          {
+            "lineNumber": 11,
+            "text": "    \"right_knee\","
+          },
+          {
+            "lineNumber": 12,
+            "text": "    \"spine2\","
+          },
+          {
+            "lineNumber": 13,
+            "text": "    \"left_ankle\","
+          },
+          {
+            "lineNumber": 14,
+            "text": "    \"right_ankle\","
+          },
+          {
+            "lineNumber": 15,
+            "text": "    \"spine3\","
+          },
+          {
+            "lineNumber": 16,
+            "text": "    \"left_foot\","
+          },
+          {
+            "lineNumber": 17,
+            "text": "    \"right_foot\","
+          },
+          {
+            "lineNumber": 18,
+            "text": "    \"neck\","
+          },
+          {
+            "lineNumber": 19,
+            "text": "    \"left_collar\","
+          },
+          {
+            "lineNumber": 20,
+            "text": "    \"right_collar\","
+          },
+          {
+            "lineNumber": 21,
+            "text": "    \"head\","
+          },
+          {
+            "lineNumber": 22,
+            "text": "    \"left_shoulder\","
+          },
+          {
+            "lineNumber": 23,
+            "text": "    \"right_shoulder\","
+          },
+          {
+            "lineNumber": 24,
+            "text": "    \"left_elbow\","
+          },
+          {
+            "lineNumber": 25,
+            "text": "    \"right_elbow\","
+          },
+          {
+            "lineNumber": 26,
+            "text": "    \"left_wrist\","
+          },
+          {
+            "lineNumber": 27,
+            "text": "    \"right_wrist\","
+          },
+          {
+            "lineNumber": 28,
+            "text": "    \"jaw\","
+          },
+          {
+            "lineNumber": 29,
+            "text": "    \"left_eye_smplhf\","
+          },
+          {
+            "lineNumber": 30,
+            "text": "    \"right_eye_smplhf\","
+          },
+          {
+            "lineNumber": 31,
+            "text": "    \"left_index1\","
+          },
+          {
+            "lineNumber": 32,
+            "text": "    \"left_index2\","
+          },
+          {
+            "lineNumber": 33,
+            "text": "    \"left_index3\","
+          },
+          {
+            "lineNumber": 34,
+            "text": "    \"left_middle1\","
+          },
+          {
+            "lineNumber": 35,
+            "text": "    \"left_middle2\","
+          },
+          {
+            "lineNumber": 36,
+            "text": "    \"left_middle3\","
+          },
+          {
+            "lineNumber": 37,
+            "text": "    \"left_pinky1\","
+          },
+          {
+            "lineNumber": 38,
+            "text": "    \"left_pinky2\","
+          },
+          {
+            "lineNumber": 39,
+            "text": "    \"left_pinky3\","
+          },
+          {
+            "lineNumber": 40,
+            "text": "    \"left_ring1\","
+          },
+          {
+            "lineNumber": 41,
+            "text": "    \"left_ring2\","
+          },
+          {
+            "lineNumber": 42,
+            "text": "    \"left_ring3\","
+          },
+          {
+            "lineNumber": 43,
+            "text": "    \"left_thumb1\","
+          },
+          {
+            "lineNumber": 44,
+            "text": "    \"left_thumb2\","
+          },
+          {
+            "lineNumber": 45,
+            "text": "    \"left_thumb3\","
+          },
+          {
+            "lineNumber": 46,
+            "text": "    \"right_index1\","
+          },
+          {
+            "lineNumber": 47,
+            "text": "    \"right_index2\","
+          },
+          {
+            "lineNumber": 48,
+            "text": "    \"right_index3\","
+          },
+          {
+            "lineNumber": 49,
+            "text": "    \"right_middle1\","
+          },
+          {
+            "lineNumber": 50,
+            "text": "    \"right_middle2\","
+          },
+          {
+            "lineNumber": 51,
+            "text": "    \"right_middle3\","
+          },
+          {
+            "lineNumber": 52,
+            "text": "    \"right_pinky1\","
+          },
+          {
+            "lineNumber": 53,
+            "text": "    \"right_pinky2\","
+          },
+          {
+            "lineNumber": 54,
+            "text": "    \"right_pinky3\","
+          },
+          {
+            "lineNumber": 55,
+            "text": "    \"right_ring1\","
+          },
+          {
+            "lineNumber": 56,
+            "text": "    \"right_ring2\","
+          },
+          {
+            "lineNumber": 57,
+            "text": "    \"right_ring3\","
+          },
+          {
+            "lineNumber": 58,
+            "text": "    \"right_thumb1\","
+          },
+          {
+            "lineNumber": 59,
+            "text": "    \"right_thumb2\","
+          },
+          {
+            "lineNumber": 60,
+            "text": "    \"right_thumb3\""
+          },
+          {
+            "lineNumber": 61,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 62,
+            "text": "  \"parents\": ["
+          },
+          {
+            "lineNumber": 63,
+            "text": "    -1,"
+          },
+          {
+            "lineNumber": 64,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 65,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 66,
+            "text": "    0,"
+          },
+          {
+            "lineNumber": 67,
+            "text": "    1,"
+          },
+          {
+            "lineNumber": 68,
+            "text": "    2,"
+          },
+          {
+            "lineNumber": 69,
+            "text": "    3,"
+          },
+          {
+            "lineNumber": 70,
+            "text": "    4,"
+          },
+          {
+            "lineNumber": 71,
+            "text": "    5,"
+          },
+          {
+            "lineNumber": 72,
+            "text": "    6,"
+          },
+          {
+            "lineNumber": 73,
+            "text": "    7,"
+          },
+          {
+            "lineNumber": 74,
+            "text": "    8,"
+          },
+          {
+            "lineNumber": 75,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 76,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 77,
+            "text": "    9,"
+          },
+          {
+            "lineNumber": 78,
+            "text": "    12,"
+          },
+          {
+            "lineNumber": 79,
+            "text": "    13,"
+          },
+          {
+            "lineNumber": 80,
+            "text": "    14,"
+          },
+          {
+            "lineNumber": 81,
+            "text": "    16,"
+          },
+          {
+            "lineNumber": 82,
+            "text": "    17,"
+          },
+          {
+            "lineNumber": 83,
+            "text": "    18,"
+          },
+          {
+            "lineNumber": 84,
+            "text": "    19,"
+          },
+          {
+            "lineNumber": 85,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 86,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 87,
+            "text": "    15,"
+          },
+          {
+            "lineNumber": 88,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 89,
+            "text": "    25,"
+          },
+          {
+            "lineNumber": 90,
+            "text": "    26,"
+          },
+          {
+            "lineNumber": 91,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 92,
+            "text": "    28,"
+          },
+          {
+            "lineNumber": 93,
+            "text": "    29,"
+          },
+          {
+            "lineNumber": 94,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 95,
+            "text": "    31,"
+          },
+          {
+            "lineNumber": 96,
+            "text": "    32,"
+          },
+          {
+            "lineNumber": 97,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 98,
+            "text": "    34,"
+          },
+          {
+            "lineNumber": 99,
+            "text": "    35,"
+          },
+          {
+            "lineNumber": 100,
+            "text": "    20,"
+          },
+          {
+            "lineNumber": 101,
+            "text": "    37,"
+          },
+          {
+            "lineNumber": 102,
+            "text": "    38,"
+          },
+          {
+            "lineNumber": 103,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 104,
+            "text": "    40,"
+          },
+          {
+            "lineNumber": 105,
+            "text": "    41,"
+          },
+          {
+            "lineNumber": 106,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 107,
+            "text": "    43,"
+          },
+          {
+            "lineNumber": 108,
+            "text": "    44,"
+          },
+          {
+            "lineNumber": 109,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 110,
+            "text": "    46,"
+          },
+          {
+            "lineNumber": 111,
+            "text": "    47,"
+          },
+          {
+            "lineNumber": 112,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 113,
+            "text": "    49,"
+          },
+          {
+            "lineNumber": 114,
+            "text": "    50,"
+          },
+          {
+            "lineNumber": 115,
+            "text": "    21,"
+          },
+          {
+            "lineNumber": 116,
+            "text": "    52,"
+          },
+          {
+            "lineNumber": 117,
+            "text": "    53"
+          },
+          {
+            "lineNumber": 118,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 119,
+            "text": "  \"betas\": ["
+          },
+          {
+            "lineNumber": 120,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 121,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 122,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 123,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 124,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 125,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 126,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 127,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 128,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 129,
+            "text": "    0.0"
+          },
+          {
+            "lineNumber": 130,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 131,
+            "text": "  \"weights_sparse\": ["
+          },
+          {
+            "lineNumber": 132,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 133,
+            "text": "      \"vertex\": 0,"
+          },
+          {
+            "lineNumber": 134,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 135,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 136,
+            "text": "      ],"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 136
+          },
+          "startPosition": {}
+        },
+        "relativeWorkspacePath": ".\\api\\data\\test_mesh2\\avatar_skeleton.json",
+        "signatures": {}
+      },
+      "score": 0.16665834188461304
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "lineNumber": 127,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 128,
+            "text": "    0.0,"
+          },
+          {
+            "lineNumber": 129,
+            "text": "    0.0"
+          },
+          {
+            "lineNumber": 130,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 131,
+            "text": "  \"weights_sparse\": ["
+          },
+          {
+            "lineNumber": 132,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 133,
+            "text": "      \"vertex\": 0,"
+          },
+          {
+            "lineNumber": 134,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 135,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 136,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 137,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 138,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 139,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 140,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 141,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 142,
+            "text": "      \"vertex\": 1,"
+          },
+          {
+            "lineNumber": 143,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 144,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 145,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 146,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 147,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 148,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 149,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 150,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 151,
+            "text": "      \"vertex\": 2,"
+          },
+          {
+            "lineNumber": 152,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 153,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 154,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 155,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 156,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 157,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 158,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 159,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 160,
+            "text": "      \"vertex\": 3,"
+          },
+          {
+            "lineNumber": 161,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 162,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 163,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 164,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 165,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 166,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 167,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 168,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 169,
+            "text": "      \"vertex\": 4,"
+          },
+          {
+            "lineNumber": 170,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 171,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 172,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 173,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 174,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 175,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 176,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 177,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 178,
+            "text": "      \"vertex\": 5,"
+          },
+          {
+            "lineNumber": 179,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 180,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 181,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 182,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 183,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 184,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 185,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 186,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 187,
+            "text": "      \"vertex\": 6,"
+          },
+          {
+            "lineNumber": 188,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 189,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 190,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 191,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 192,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 193,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 194,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 195,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 196,
+            "text": "      \"vertex\": 7,"
+          },
+          {
+            "lineNumber": 197,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 198,
+            "text": "        0"
+          },
+          {
+            "lineNumber": 199,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 200,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 201,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 202,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 203,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 204,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 205,
+            "text": "      \"vertex\": 8,"
+          },
+          {
+            "lineNumber": 206,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 207,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 208,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 209,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 210,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 211,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 212,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 213,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 214,
+            "text": "      \"vertex\": 9,"
+          },
+          {
+            "lineNumber": 215,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 216,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 217,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 218,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 219,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 220,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 221,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 222,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 223,
+            "text": "      \"vertex\": 10,"
+          },
+          {
+            "lineNumber": 224,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 225,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 226,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 227,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 228,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 229,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 230,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 231,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 232,
+            "text": "      \"vertex\": 11,"
+          },
+          {
+            "lineNumber": 233,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 234,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 235,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 236,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 237,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 238,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 239,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 240,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 241,
+            "text": "      \"vertex\": 12,"
+          },
+          {
+            "lineNumber": 242,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 243,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 244,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 245,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 246,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 247,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 248,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 249,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 250,
+            "text": "      \"vertex\": 13,"
+          },
+          {
+            "lineNumber": 251,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 252,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 253,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 254,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 255,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 256,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 257,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 258,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 259,
+            "text": "      \"vertex\": 14,"
+          },
+          {
+            "lineNumber": 260,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 261,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 262,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 263,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 264,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 265,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 266,
+            "text": "    },"
+          },
+          {
+            "lineNumber": 267,
+            "text": "    {"
+          },
+          {
+            "lineNumber": 268,
+            "text": "      \"vertex\": 15,"
+          },
+          {
+            "lineNumber": 269,
+            "text": "      \"joints\": ["
+          },
+          {
+            "lineNumber": 270,
+            "text": "        15"
+          },
+          {
+            "lineNumber": 271,
+            "text": "      ],"
+          },
+          {
+            "lineNumber": 272,
+            "text": "      \"values\": ["
+          },
+          {
+            "lineNumber": 273,
+            "text": "        1.0"
+          },
+          {
+            "lineNumber": 274,
+            "text": "      ]"
+          },
+          {
+            "lineNumber": 275,
+            "text": "    }"
+          },
+          {
+            "lineNumber": 276,
+            "text": "  ],"
+          },
+          {
+            "lineNumber": 277,
+            "text": "  \"note\": \"传统蒙皮网格，可用 Blender/Maya 导入 OBJ 并绑定此骨骼权重\""
+          },
+          {
+            "lineNumber": 278,
+            "text": "}"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "column": 1,
+            "line": 277
+          },
+          "startPosition": {
+            "line": 126
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\data\\test_mesh2\\avatar_skeleton.json",
+        "signatures": {}
+      },
+      "score": 0.15411376953125
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 39,
+            "text": "class LHMPPService:"
+          },
+          {
+            "lineNumber": 231,
+            "text": "def _reconstruct_avatar_real("
+          },
+          {
+            "lineNumber": 232,
+            "text": "        self,"
+          },
+          {
+            "lineNumber": 233,
+            "text": "        image_paths: list[Path],"
+          },
+          {
+            "lineNumber": 234,
+            "text": "        output_dir: Path,"
+          },
+          {
+            "lineNumber": 235,
+            "text": "        root: Path,"
+          },
+          {
+            "lineNumber": 236,
+            "text": "        *,"
+          },
+          {
+            "lineNumber": 237,
+            "text": "        ref_view: int,"
+          },
+          {
+            "lineNumber": 238,
+            "text": "        export_skinned_mesh: bool,"
+          },
+          {
+            "lineNumber": 239,
+            "text": "    ) -\u003e dict[str, Any]:"
+          },
+          {
+            "lineNumber": 254
+          },
+          {
+            "lineNumber": 255
+          },
+          {
+            "lineNumber": 256,
+            "text": "        image_glob_dir = output_dir / \"ref_images\""
+          },
+          {
+            "lineNumber": 257,
+            "text": "        image_glob_dir.mkdir(parents=True, exist_ok=True)"
+          },
+          {
+            "lineNumber": 258,
+            "text": "        for i, src in enumerate(image_paths):"
+          },
+          {
+            "lineNumber": 259,
+            "text": "            ext = src.suffix or \".png\""
+          },
+          {
+            "lineNumber": 260,
+            "text": "            copy2(src, image_glob_dir / f\"ref_{i:03d}{ext}\")"
+          },
+          {
+            "lineNumber": 261
+          },
+          {
+            "lineNumber": 262,
+            "text": "        ply_out = output_dir / \"avatar.ply\""
+          },
+          {
+            "lineNumber": 263,
+            "text": "        model_path = settings.model_path"
+          },
+          {
+            "lineNumber": 264,
+            "text": "        if not model_path:"
+          },
+          {
+            "lineNumber": 265,
+            "text": "            from core.utils.model_download_utils import AutoModelQuery"
+          },
+          {
+            "lineNumber": 266
+          },
+          {
+            "lineNumber": 267,
+            "text": "            auto_query = AutoModelQuery(save_dir=str(root / \"pretrained_models\"))"
+          },
+          {
+            "lineNumber": 268,
+            "text": "            model_path = auto_query.query(settings.model_name)"
+          },
+          {
+            "lineNumber": 269
+          },
+          {
+            "lineNumber": 270,
+            "text": "        from services.lhm_gs_export import run_tpose_export_with_sidecars"
+          },
+          {
+            "lineNumber": 271,
+            "text": "        from services.lhm_infer_utils import setup_loaders_for_hrm"
+          },
+          {
+            "lineNumber": 272
+          },
+          {
+            "lineNumber": 273,
+            "text": "        args = SimpleNamespace("
+          },
+          {
+            "lineNumber": 274,
+            "text": "            model_name=settings.model_name,"
+          },
+          {
+            "lineNumber": 275,
+            "text": "            model_path=model_path,"
+          },
+          {
+            "lineNumber": 276,
+            "text": "            image_glob=str(image_glob_dir / \"ref_*.png\"),"
+          },
+          {
+            "lineNumber": 277,
+            "text": "            images_dir=None,"
+          },
+          {
+            "lineNumber": 278,
+            "text": "            pose_dir=\"\","
+          },
+          {
+            "lineNumber": 279,
+            "text": "            ref_view=ref_view,"
+          },
+          {
+            "lineNumber": 280,
+            "text": "            output=str(ply_out),"
+          },
+          {
+            "lineNumber": 281,
+            "text": "            work_dir=str(output_dir / \"tpose_gs_work\"),"
+          },
+          {
+            "lineNumber": 282,
+            "text": "            device=\"cuda\","
+          },
+          {
+            "lineNumber": 283,
+            "text": "            max_image_size=settings.effective_infer_max_image_size,"
+          },
+          {
+            "lineNumber": 284,
+            "text": "            lhm_root=str(root),"
+          },
+          {
+            "lineNumber": 285,
+            "text": "        )"
+          },
+          {
+            "lineNumber": 286
+          },
+          {
+            "lineNumber": 287,
+            "text": "        betas_list: list[float] | None = None"
+          },
+          {
+            "lineNumber": 288,
+            "text": "        model = None"
+          },
+          {
+            "lineNumber": 289,
+            "text": "        ref_count = len(image_paths)"
+          },
+          {
+            "lineNumber": 290,
+            "text": "        if torch.cuda.is_available():"
+          },
+          {
+            "lineNumber": 291,
+            "text": "            torch.cuda.empty_cache()"
+          },
+          {
+            "lineNumber": 292,
+            "text": "        try:"
+          },
+          {
+            "lineNumber": 293,
+            "text": "            ("
+          },
+          {
+            "lineNumber": 294,
+            "text": "                model,"
+          },
+          {
+            "lineNumber": 295,
+            "text": "                _cfg,"
+          },
+          {
+            "lineNumber": 296,
+            "text": "                ref_imgs_tensor,"
+          },
+          {
+            "lineNumber": 297,
+            "text": "                smplx_params,"
+          },
+          {
+            "lineNumber": 298,
+            "text": "                motion_seqs,"
+          },
+          {
+            "lineNumber": 299,
+            "text": "                _pose_estimator,"
+          },
+          {
+            "lineNumber": 300,
+            "text": "                device,"
+          },
+          {
+            "lineNumber": 301,
+            "text": "            ) = setup_loaders_for_hrm(args)"
+          },
+          {
+            "lineNumber": 302,
+            "text": "            ref_count = int(ref_imgs_tensor.shape[0])"
+          },
+          {
+            "lineNumber": 303,
+            "text": "            import gc"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 466
+          },
+          "startPosition": {
+            "line": 38
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\lhmpp_service.py",
+        "signatures": {
+          "ranges": [
+            {
+              "endPosition": {
+                "column": 5,
+                "line": 14
+              },
+              "startPosition": {
+                "column": 1,
+                "line": 13
+              }
+            },
+            {
+              "endPosition": {
+                "column": 9,
+                "line": 41
+              },
+              "startPosition": {
+                "column": 5,
+                "line": 40
+              }
+            }
+          ]
+        }
+      },
+      "score": 0.15325960516929626
+    },
+    {
+      "codeBlock": {
+        "detailedLines": [
+          {
+            "isSignature": true,
+            "lineNumber": 23,
+            "text": "class MotionService:"
+          },
+          {
+            "lineNumber": 24,
+            "text": "    \"\"\"从动作视频或摄像头帧序列提取 SMPL-X 参数。\"\"\""
+          },
+          {
+            "lineNumber": 25
+          },
+          {
+            "lineNumber": 26,
+            "text": "    def __init__(self) -\u003e None:"
+          },
+          {
+            "lineNumber": 27,
+            "text": "        self.cache_dir = settings.motion_cache_dir"
+          },
+          {
+            "lineNumber": 28,
+            "text": "        self.cache_dir.mkdir(parents=True, exist_ok=True)"
+          },
+          {
+            "lineNumber": 29
+          },
+          {
+            "lineNumber": 30,
+            "text": "    def _lhm_root(self) -\u003e Path:"
+          },
+          {
+            "lineNumber": 31,
+            "text": "        root = Path(settings.lhm_root).resolve()"
+          },
+          {
+            "lineNumber": 32,
+            "text": "        if not root.exists():"
+          },
+          {
+            "lineNumber": 33,
+            "text": "            raise RuntimeError(\"LHM_ROOT 未配置或不存在\")"
+          },
+          {
+            "lineNumber": 34,
+            "text": "        if str(root) not in sys.path:"
+          },
+          {
+            "lineNumber": 35,
+            "text": "            sys.path.insert(0, str(root))"
+          },
+          {
+            "lineNumber": 36,
+            "text": "        return root"
+          },
+          {
+            "lineNumber": 37
+          },
+          {
+            "lineNumber": 38,
+            "text": "    def extract_from_video(self, video_path: Path, max_frames: int = 1000) -\u003e Path:"
+          },
+          {
+            "lineNumber": 39,
+            "text": "        \"\"\"返回 smplx_params 目录路径。\"\"\""
+          },
+          {
+            "lineNumber": 40,
+            "text": "        if settings.mock_mode:"
+          },
+          {
+            "lineNumber": 41,
+            "text": "            out = self.cache_dir / f\"mock_{video_hash(video_path)}\""
+          },
+          {
+            "lineNumber": 42,
+            "text": "            smplx_dir = out / \"smplx_params\""
+          },
+          {
+            "lineNumber": 43,
+            "text": "            smplx_dir.mkdir(parents=True, exist_ok=True)"
+          },
+          {
+            "lineNumber": 44,
+            "text": "            for i in range(min(30, max_frames)):"
+          },
+          {
+            "lineNumber": 45,
+            "text": "                frame = {"
+          },
+          {
+            "lineNumber": 46,
+            "text": "                    \"betas\": [0.0] * 10,"
+          },
+          {
+            "lineNumber": 47,
+            "text": "                    \"root_pose\": [0.0, 0.0, 0.0],"
+          },
+          {
+            "lineNumber": 48,
+            "text": "                    \"body_pose\": [[0.0, 0.0, 0.0]] * 21,"
+          },
+          {
+            "lineNumber": 49,
+            "text": "                    \"jaw_pose\": [0.0, 0.0, 0.0],"
+          },
+          {
+            "lineNumber": 50,
+            "text": "                    \"leye_pose\": [0.0, 0.0, 0.0],"
+          },
+          {
+            "lineNumber": 51,
+            "text": "                    \"reye_pose\": [0.0, 0.0, 0.0],"
+          },
+          {
+            "lineNumber": 52,
+            "text": "                    \"lhand_pose\": [[0.0, 0.0, 0.0]] * 15,"
+          },
+          {
+            "lineNumber": 53,
+            "text": "                    \"rhand_pose\": [[0.0, 0.0, 0.0]] * 15,"
+          },
+          {
+            "lineNumber": 54,
+            "text": "                    \"trans\": [0.0, 0.0, 0.0],"
+          },
+          {
+            "lineNumber": 55,
+            "text": "                    \"focal\": [1000.0, 1000.0],"
+          },
+          {
+            "lineNumber": 56,
+            "text": "                    \"princpt\": [256.0, 256.0],"
+          },
+          {
+            "lineNumber": 57,
+            "text": "                    \"img_size_wh\": [512, 512],"
+          },
+          {
+            "lineNumber": 58,
+            "text": "                    \"pad_ratio\": 0.2,"
+          },
+          {
+            "lineNumber": 59,
+            "text": "                }"
+          },
+          {
+            "lineNumber": 60,
+            "text": "                (smplx_dir / f\"{i + 1:05d}.json\").write_text("
+          },
+          {
+            "lineNumber": 61,
+            "text": "                    json.dumps(frame), encoding=\"utf-8\""
+          },
+          {
+            "lineNumber": 62,
+            "text": "                )"
+          },
+          {
+            "lineNumber": 63,
+            "text": "            return smplx_dir"
+          },
+          {
+            "lineNumber": 64
+          },
+          {
+            "lineNumber": 65,
+            "text": "        cache_key = video_hash(video_path)"
+          },
+          {
+            "lineNumber": 66,
+            "text": "        cached = self.cache_dir / cache_key"
+          },
+          {
+            "lineNumber": 67,
+            "text": "        smplx_dir = cached / \"smplx_params\""
+          },
+          {
+            "lineNumber": 68,
+            "text": "        if smplx_dir.exists() and any(smplx_dir.glob(\"*.json\")):"
+          },
+          {
+            "lineNumber": 69,
+            "text": "            return smplx_dir"
+          },
+          {
+            "lineNumber": 70
+          },
+          {
+            "lineNumber": 71,
+            "text": "        root = self._lhm_root()"
+          }
+        ],
+        "range": {
+          "endPosition": {
+            "line": 138
+          },
+          "startPosition": {
+            "column": 29,
+            "line": 19
+          }
+        },
+        "relativeWorkspacePath": ".\\api\\services\\motion_service.py",
+        "signatures": {}
+      },
+      "score": 0.15062135457992554
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="semantic_search_full"><details>
+<summary>Tool use: **semantic_search_full**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "glob": "*.{py,env*}",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "subdiv|displacement|smooth|gs_target|shell"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "subdiv|displacement|smooth|gs_target|shell",
+  "topFiles": [
+    {
+      "matchCount": 13,
+      "uri": "api/scripts/blender_export_fbx.py"
+    },
+    {
+      "matchCount": 24,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 3,
+      "uri": "api\\.env.example"
+    },
+    {
+      "matchCount": 10,
+      "uri": "api\\config.py"
+    },
+    {
+      "matchCount": 13,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    },
+    {
+      "matchCount": 3,
+      "uri": "api\\services\\blender_fbx_export.py"
+    },
+    {
+      "matchCount": 3,
+      "uri": "api\\services\\texture_bake_service.py"
+    },
+    {
+      "matchCount": 24,
+      "uri": "api\\services\\mesh_export_service.py"
+    }
+  ],
+  "totalFiles": 8,
+  "totalMatches": 93
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户指出鞋子看起来像被涂鸦，但这是模型的面或几何结构问题，而非颜色。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户指出鞋子看起来像被涂鸦一样，但这是模型的面（mesh 几何）问题，不是颜色纹理。
+
+细分（Catmull-Clark）会抹平低多边形网格的锐利细节，使脚与鞋融为一体。gs_target 模式下 k>1 的加权平均也会将多个高斯位置混合，导致边缘模糊。
+
+sharpness 参数越低，平均化越强，模糊越严重。max 模式保留每个顶点最强的偏移方向，可能更利于保留鞋 bump，但其他地方容易显得尖锐。根本原因是 k 邻居平均将脚顶点拉向脚与鞋的高斯平均值，导致几何 blob 化。
+
+建议将细分级别降至 0 或 1，避免进一步抹平位移后的网格。针对局部突出部位，可改用 max 模式或把 k 降到 1–2，并提高 sharpness。k=1 的 gs_target 最能保留边缘细节，因为每个顶点只朝最近一个高斯移动，不会产生平均化模糊。
+
+还发现用户环境变量里 INFER_DENSE_SAMPLE_PTS=4000，高斯数量过少会让结果更模糊。建议把 FBX_SUBDIVISION_LEVELS 设为 0，直接保留低多边形网格的位移细节，虽然可能略显块状。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户澄清了问题：鞋像表面被涂抹，这是模型的面而非颜色。
+
+几何面被抹平的主因是细分在位移之后执行，导致鞋底细节被模糊融合。gs_target 的 k=6 加权平均也加剧了局部几何的平滑。此外，4000 个高斯点的稀疏度不足以保留鞋子的精细结构。
+
+SMPL-X 脚部本无鞋子拓扑，天然受限。考虑将默认细分级别从 1 改为 0 以保留锐利边缘，并建议位移改用 max 模式或 k=1-2 配合高 sharpness 来强化局部细节。同时意识到若将位移置于细分之后，会破坏 LBS 权重计算。
+
+进一步确认细分不会破坏 LBS 权重，因为新顶点会插值继承原权重。更优方案是先在 Blender 中对原始网格进行细分，再重新执行位移；这样能保留更多顶点来呈现精细结构，同时避免 Catmull 平滑对位移细节的干扰。
+
+Python 内部先做细分再位移，可直接保留更多顶点来刻画鞋边，避免 Catmull 平滑。Blender 导入的 OBJ 顶点已被固定，无法再细分。因此建议在 Python 中先细分，再执行位移，从而跳过 Blender 细分或将其设为 0。</details></think>
+
+_**Agent (default)**_
+
+鞋面像被涂抹是几何被平滑，不是贴图。接着看 Blender 细分类型和位移参数能否保留局部凸起。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "subdivision_type|SUBSURF|CATMULL"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "subdivision_type|SUBSURF|CATMULL",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将添加 `fbx_subdivision_type` 配置项。默认值为 `"simple"`，可保留原始形状；也可设为 `"catmull"` 以平滑表面。
+
+计划通过环境变量或第7个命令行参数将细分类型传入 Blender 子进程，并同步更新脚本与调用方。同时考虑将默认位移系数从 6 调整为 3，并在文档中补充 max 替代选项。另外注意到，若对所有面使用平滑着色，即使顶点保持锐利，几何体也会显得更顺滑，这可能与用户所说的“面”有关。
+
+还计划把自动平滑角度从 180° 改为 60°，以保留部分硬边。默认细分级别定为 1，细分类型定为 simple。同时会在文档中注明 INFER_DENSE_SAMPLE_PTS=4000 不宜使用。</details></think>
+
+_**Agent (default)**_
+
+确认：鞋面“涂抹感”来自几何被平滑（细分 + 邻域位移平均），不是贴图。正在改为 Simple 细分并收紧位移参数以保留鞋等局部凸起。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\config.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>

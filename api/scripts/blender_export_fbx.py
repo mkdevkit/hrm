@@ -2,7 +2,7 @@
 
 用法:
   blender --background --python blender_export_fbx.py -- \\
-    <mesh.obj> <skeleton.json> <lbs_weights.npz> <output.fbx> [diffuse.png|-] [subdiv_levels]
+    <mesh.obj> <skeleton.json> <lbs_weights.npz> <output.fbx> [diffuse.png|-] [subdiv_levels] [subdiv_type]
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _ensure_numpy() -> None:
         ) from exc
 
 
-def _parse_args() -> tuple[Path, Path, Path, Path, Path | None, int]:
+def _parse_args() -> tuple[Path, Path, Path, Path, Path | None, int, str]:
     argv = sys.argv
     if "--" not in argv:
         raise SystemExit("用法: blender --background --python blender_export_fbx.py -- <args>")
@@ -80,13 +80,16 @@ def _parse_args() -> tuple[Path, Path, Path, Path, Path | None, int]:
     if len(args) < 4:
         raise SystemExit(
             "至少需要 4 个参数: obj skeleton.json weights.npz output.fbx "
-            "[diffuse.png|-] [subdiv_levels]"
+            "[diffuse.png|-] [subdiv_levels] [subdiv_type:simple|catmull]"
         )
     texture_path: Path | None = None
     if len(args) > 4 and args[4] not in ("", "-"):
         texture_path = Path(args[4])
     subdiv = int(args[5]) if len(args) > 5 else 0
-    return Path(args[0]), Path(args[1]), Path(args[2]), Path(args[3]), texture_path, subdiv
+    subdiv_type = (args[6] if len(args) > 6 else "simple").strip().lower()
+    if subdiv_type not in ("simple", "catmull", "catmull_clark"):
+        subdiv_type = "simple"
+    return Path(args[0]), Path(args[1]), Path(args[2]), Path(args[3]), texture_path, subdiv, subdiv_type
 
 
 def _ensure_fbx_exporter() -> None:
@@ -326,8 +329,8 @@ def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
     mesh_obj.parent_type = "OBJECT"
 
 
-def _apply_subdivision(mesh_obj: bpy.types.Object, levels: int) -> None:
-    """在绑 Armature 之前细分，避免 modifier 顺序警告。"""
+def _apply_subdivision(mesh_obj: bpy.types.Object, levels: int, subdiv_type: str = "simple") -> None:
+    """在绑 Armature 之前细分。simple 只增面不磨圆，catmull 会把鞋/衣凸起抹平。"""
     if levels <= 0:
         return
     for mod in list(mesh_obj.modifiers):
@@ -337,9 +340,13 @@ def _apply_subdivision(mesh_obj: bpy.types.Object, levels: int) -> None:
     mod = mesh_obj.modifiers.new(name="Subsurf", type="SUBSURF")
     mod.levels = levels
     mod.render_levels = levels
+    use_catmull = subdiv_type in ("catmull", "catmull_clark")
+    if hasattr(mod, "subdivision_type"):
+        mod.subdivision_type = "CATMULL_CLARK" if use_catmull else "SIMPLE"
     bpy.ops.object.modifier_apply(modifier=mod.name)
     mesh_obj.select_set(False)
-    print(f"[HRM] 细分曲面 Level {levels} 已应用", file=sys.stderr)
+    kind = "Catmull-Clark" if use_catmull else "Simple"
+    print(f"[HRM] 细分曲面 Level {levels} ({kind}) 已应用", file=sys.stderr)
 
 
 def _prepare_mesh_for_export(mesh_obj: bpy.types.Object, texture_path: Path | None) -> None:
@@ -415,7 +422,7 @@ def _export_fbx(fbx_path: Path, *, embed_textures: bool) -> None:
 
 
 def main() -> None:
-    obj_path, skel_path, weights_path, fbx_path, texture_path, subdiv = _parse_args()
+    obj_path, skel_path, weights_path, fbx_path, texture_path, subdiv, subdiv_type = _parse_args()
 
     skel = json.loads(skel_path.read_text(encoding="utf-8"))
     joint_names: list[str] = skel["joint_names"]
@@ -427,7 +434,7 @@ def main() -> None:
 
     mesh_obj = _import_obj(obj_path)
     _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
-    _apply_subdivision(mesh_obj, subdiv)
+    _apply_subdivision(mesh_obj, subdiv, subdiv_type)
     joints = _resolve_joint_rest_positions(
         skel, joint_names, mesh_obj, rows, cols, flat_weights
     )
