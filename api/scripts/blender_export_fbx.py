@@ -367,12 +367,22 @@ def _prepare_mesh_for_export(mesh_obj: bpy.types.Object, texture_path: Path | No
 
     if texture_path and texture_path.is_file():
         img = bpy.data.images.load(str(texture_path.resolve()))
+        # sRGB 贴图（与 3DGS viewer 一致，不再走 Principled 光照）
+        if hasattr(img, "colorspace_settings"):
+            img.colorspace_settings.name = "sRGB"
         tex_node = nodes.new("ShaderNodeTexImage")
         tex_node.image = img
         tex_node.location = (-300, 300)
-        links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
-        bsdf.inputs["Roughness"].default_value = 0.55
-        print(f"[HRM] 已绑定 diffuse 贴图: {texture_path.name}", file=sys.stderr)
+        output = nodes.get("Material Output")
+        emission = nodes.new("ShaderNodeEmission")
+        emission.location = (120, 300)
+        emission.inputs["Strength"].default_value = 1.0
+        links.new(tex_node.outputs["Color"], emission.inputs["Color"])
+        if output:
+            links.new(emission.outputs["Emission"], output.inputs["Surface"])
+        if bsdf:
+            nodes.remove(bsdf)
+        print(f"[HRM] 已绑定无光照 Emission 贴图: {texture_path.name}", file=sys.stderr)
     else:
         bsdf.inputs["Base Color"].default_value = (0.82, 0.68, 0.58, 1.0)
         bsdf.inputs["Roughness"].default_value = 0.52

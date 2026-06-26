@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     fbx_texture_size: int = 2048
     fbx_subdivision_levels: int = 1  # 0=低模，1≈4×面，2≈16×面
     fbx_bake_texture: bool = True
+    # 高斯→UV splat 半径（像素）；略大更平滑，略小更锐
+    fbx_texture_splat_radius: float = 2.0
     # 高斯→SMPL-X 位移：过小会导致网格与 3DGS 对不齐
     fbx_max_displacement: float = 0.5
     fbx_displacement_blend: float = 1.0

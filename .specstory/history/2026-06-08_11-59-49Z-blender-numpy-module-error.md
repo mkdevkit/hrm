@@ -20751,3 +20751,1121 @@ _**Agent (default)**_
 <summary>Tool use: **edit_file_v2**</summary>
 
 </details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "_read_obj_vertices"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "_read_obj_vertices",
+  "topFiles": [
+    {
+      "matchCount": 3,
+      "uri": "api\\services\\mesh_export_service.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 3
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\.env.example",
+  "pattern": "FBX_"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\.env.example",
+  "pattern": "FBX_",
+  "topFiles": [
+    {
+      "matchCount": 3,
+      "uri": "api\\.env.example"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 3
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在更新 .env.example 和 assets 的 README 文件。</details></think>
+
+_**Agent (default)**_
+
+The string to replace was not found in the file.
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+你的判断是对的：**3DGS 能正常显示，说明 PLY 没问题**；问题出在我们把 3DGS「贴」到 SMPL-X 网格的方式上。
+
+## 之前为什么不对
+
+| 问题 | 原因 |
+|------|------|
+| **模型像另一套** | 位移只应用了 **85%**（`blend=0.85`），且单点位移被 **0.12m** 截断 → 网格仍接近默认 SMPL-X 模板 |
+| **颜色不对** | 颜色用「网格顶点 → 最近高斯」kNN，**没走 LHM++ 的锚点索引**；网格一偏，颜色就错 |
+| **重烘焙仍不对** | 旧脚本**只读已有 OBJ**，没有从 PLY **重新做位移** |
+| **太慢** | 用 2 万三角面 × 2048² 的 CPU 光栅化；SMPL-X 其实是**每顶点一组 UV**，不必这么算 |
+
+3DGS  viewer 是直接 GPU splat 渲染；我们之前是在 CPU 上把错误对齐的网格再慢速烘焙，所以既慢又不像。
+
+## 已修复
+
+1. **重烘焙 = 完整重建**：从 PLY 重新算位移 + 烘焙 + FBX  
+2. **颜色与位移同源**：通过 `dense_sample_points` 锚点插值（与高斯 **i ↔ 锚点 i** 对齐）  
+3. **位移默认 `blend=1.0`**，上限改为可配置 `FBX_MAX_DISPLACEMENT=0.5`  
+4. **UV 烘焙改为顶点 splat**（约 1 万顶点，秒级完成）  
+5. **自动读 `betas.json`**，避免用 neutral 默认体型
+
+## 请同步代码后重跑
+
+```bash
+cd /root/hrm/api
+python scripts/rebake_avatar_fbx.py \
+  data/avatars/4e8666bb-a632-4a54-ba44-b2aa7a8bc37d/output
+```
+
+正常日志应包含：
+
+```
+锚点 PLY: 1_40000.ply (40000 points)
+顶点色来自锚点对齐插值（与位移场一致）
+UV 顶点 splat 烘焙 (10475 顶点, 2048px)
+```
+
+## 若仍对不齐
+
+检查锚点与高斯数量是否一致。若报：
+
+> 高斯点数 (40000) 与锚点数 (...) 不一致
+
+说明 `LHM_ROOT/pretrained_models/dense_sample_points/` 里缺少对应 prior（如 `1_40000.ply`）。低显存模式用 40000 点时需要该文件。
+
+可在 `.env` 中进一步放宽位移：
+
+```env
+FBX_MAX_DISPLACEMENT=1.0
+FBX_DISPLACEMENT_BLEND=1.0
+```
+
+跑完后用 3dviewer 对比 FBX 与 3DGS，若还有偏差，把完整日志（尤其 `锚点 PLY` 那行）发过来。
+
+---
+
+_**User**_
+
+是不是用光照了，还是不对
+
+---
+
+_**Agent (default)**_
+
+颜色仍不对，可能来自烘焙时的 SH→RGB 转换，或 Blender/查看器额外加了光照。正在对比整条渲染链。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py",
+  "pattern": "material|light|BSDF|Principled|emission|shade"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py",
+  "pattern": "material|light|BSDF|Principled|emission|shade",
+  "topFiles": [
+    {
+      "matchCount": 6,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 6
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer",
+  "pattern": "material|light|texture|MeshStandard|emissive"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer",
+  "pattern": "material|light|texture|MeshStandard|emissive",
+  "topFiles": [
+    {
+      "matchCount": 34,
+      "uri": "3dviewer\\src\\viewer.ts"
+    },
+    {
+      "matchCount": 1,
+      "uri": "3dviewer\\index.html"
+    },
+    {
+      "matchCount": 2,
+      "uri": "3dviewer\\package-lock.json"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 37
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在检查 Blender 材质设置和 3D viewer 的 upgradeMaterial 逻辑，确认纹理 FBX 的光照配置是否正确。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "glob": "*.py",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\LHM-plusplus",
+  "pattern": "f_dc|SH_C0|0\\.282"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\LHM-plusplus",
+  "pattern": "f_dc|SH_C0|0\\.282",
+  "topFiles": [],
+  "totalFiles": 0,
+  "totalMatches": 0
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+3D查看器确实应用了光照。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "f_dc|sh2rgb|SH_C0"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "f_dc|sh2rgb|SH_C0",
+  "topFiles": [
+    {
+      "matchCount": 2,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    },
+    {
+      "matchCount": 7,
+      "uri": ".specstory\\history\\2026-06-08_11-59-49Z-blender-numpy-module-error.md"
+    },
+    {
+      "matchCount": 5,
+      "uri": "api\\services\\texture_bake_service.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    },
+    {
+      "matchCount": 1,
+      "uri": "3dgs/README.md"
+    }
+  ],
+  "totalFiles": 5,
+  "totalMatches": 17
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dgs\src\main.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在确认 specstory 中的实现细节：LHM 使用了 sh_utils 的 SH2RGB。
+
+SH2RGB 公式与标准实现一致。颜色差异更可能是 3dviewer 中的光照设置导致：MeshStandardMaterial 配合多光源、环境光和色调映射，使渲染结果与未光照的 3DGS 不同。
+
+考虑将 3dviewer 中的烘焙纹理改为 `MeshBasicMaterial` 并关闭色调映射，以还原未光照的基底色。Blender 导出时建议使用 Emission 节点直接链接纹理。还计划增加自动检测机制：若纹理文件名包含 diffuse，则自动切换为无光照模式。接下来将在 `enhanceMeshAppearance` 中实现这一方案。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **D:\WorkSpace\mkdevkit\hrm** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer",
+  "pattern": "enhanceMeshAppearance|HRM|baked"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer",
+  "pattern": "enhanceMeshAppearance|HRM|baked",
+  "topFiles": [
+    {
+      "matchCount": 2,
+      "uri": "3dviewer\\src\\i18n.ts"
+    },
+    {
+      "matchCount": 2,
+      "uri": "3dviewer\\src\\viewer.ts"
+    },
+    {
+      "matchCount": 1,
+      "uri": "3dviewer\\index.html"
+    },
+    {
+      "matchCount": 5,
+      "uri": "3dviewer\\README.md"
+    },
+    {
+      "matchCount": 1,
+      "uri": "3dviewer\\src\\main.ts"
+    }
+  ],
+  "totalFiles": 5,
+  "totalMatches": 11
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在修复 3D 查看器的材质设置。纹理烘焙材质将改用 MeshBasicMaterial，并关闭 toneMapped。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\i18n.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将修复查看器和 Blender 的问题。
+
+正在区分 3DGS 与 PBR 的光照差异。注意到高斯溅射的 SH 颜色基于显示空间（0.5+C0*sh），保存为 PNG 时需注意 gamma 编码。接下来开始实现查看器的代码修改。
+
+查看器将改用无光照材质处理纹理贴图，关闭色调映射。Blender 导出中会添加 ShaderNodeEmission 节点来模拟发光效果。</details></think>
+
+_**Agent (default)**_
+
+是的：3dviewer 对带贴图的 FBX 仍用了 PBR + 多光源 + 环境光，会把 3DGS 烘焙的 albedo 再算一遍光照。正在改为无光照显示，并让 Blender 导出使用 Emission 材质。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\i18n.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\i18n.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在修复 Blender 的 else 分支。无纹理时仍错误使用了 BSDF。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**是的，之前确实用了光照**，这是颜色和 3DGS 不一致的主要原因之一。
+
+## 原因
+
+| 组件 | 之前的行为 |
+|------|-----------|
+| **3dviewer** | 有贴图仍用 `MeshStandardMaterial` + 半球光 + 3 盏平行光 + 环境光 + ACES 色调映射 → 贴图被当成 PBR 再照一次光 |
+| **3DGS 查看器** | 直接 splat 显示 `f_dc` 颜色，**无光照** |
+| **Blender 导出** | `Principled BSDF` + Roughness，导入后同样受光照影响 |
+
+所以即使贴图烘焙对了，在 3dviewer 里也会偏暗、偏色、有明暗对比，看起来像「加了灯光的另一种效果」。
+
+## 已修改
+
+1. **3dviewer**：检测到 diffuse 贴图 → 改用 `MeshBasicMaterial`（`toneMapped: false`），**不受场景灯光影响**，接近 3DGS 的显示方式  
+2. **Blender 脚本**：有贴图时改为 **Emission 强度 1.0**，不再走 Principled 光照
+
+## 你需要做的
+
+1. **更新 3dviewer 代码**，刷新页面后**重新加载 FBX**（不必重烘焙也能先看颜色变化）  
+2. 若要 FBX 文件本身也带无光照材质，再跑一次 rebake 重新导出 FBX  
+
+## 仍可能存在的差异（正常）
+
+- 3DGS 有 **视角相关** 的高阶 SH，烘焙只用 **SH0（`f_dc`）**，侧面看可能和 splat 略有差别  
+- 网格若与 3DGS **形变未对齐**，颜色仍会「贴错位置」——那是几何问题，不是光照  
+
+对比方式：左边 3dgs 看 PLY，右边 3dviewer 看 FBX；若更新后整体色调接近、只是细节/角度略有差异，说明光照问题已解决。若仍整体错位，把 rebake 日志里 `锚点 PLY` 那行发过来继续查几何对齐。
+
+---
+
+_**User**_
+
+颜色可以了，但是不精细，斑块状的。
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+颜色已正确。但纹理仍显粗块，不够精细。
+
+问题可能源于顶点UV贴图稀疏、纹理分辨率不足，或缺少三角形光栅化与平滑滤波。准备优先调整这些参数。</details></think>
+
+_**Agent (default)**_
+
+颜色对了但出现斑块，多半是顶点 splat 太稀疏、空洞填充导致。正在改为三角面光栅化并加强纹理平滑。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+发现斑块状问题源于顶点 splat。计划改用三角形光栅化渲染，因为 SMPL-X 始终提供 uv_faces 数据。
+
+计划通过增加 k_neighbors 或 IDW 插值来平滑顶点颜色。纹理后处理将采用双边滤波或高斯模糊配合非锐化掩码，同时改用多轮膨胀与 NS 填充优化孔洞修复。为加速三角形光栅化，考虑按包围盒批量处理面片。
+
+尝试过用 cv2.fillConvexPoly 或 skimage.draw.polygon 直接绘制三角形，但它们难以实现逐顶点插值的 Gouraud 着色。也考虑过先在半分辨率下光栅化再用 Lanczos 上采样，但担心会过度模糊。最终决定仍采用三角形光栅化保证平滑，随后对纹理做一次小范围双边滤波（d=5）以消除顶点量化带来的块状感。
+
+确定将 k_neighbors 提升至 16，使高斯着色更平滑。已排除直接在 UV 平面做高斯 splat 的复杂方案。最简有效做法是让 bake_diffuse 在有 uv_faces 时始终走三角形光栅化。
+
+新增 `_postprocess_texture` 方法，对纹理做双边滤波后处理。k_neighbors 默认提升至 16，并加入 `fbx_texture_bake_mode` 配置项，支持质量优先与快速模式切换。考虑到 20908 个面片的三角形光栅化可能耗时 30–60 秒，计划在 1024 内部分辨率下完成后再用 Lanczos 双线性插值放大两倍，以兼顾速度与平滑度。曾考虑用 numba 加速，但认为过于复杂。
+
+进一步排查发现，k=8 的 k 近邻会导致高斯之间颜色跳变，造成顶点级不连续。计划将 k_neighbors 提升至 24 或 32，使锚点采样更平滑。同时考虑跳过 UV 空间中过小的三角形、减少日志开销，或引入并行处理来加速三角形光栅化。
+
+改用高斯核权重替代反距离加权，使颜色插值更平滑。重新评估后认为，直接在 UV 空间对约 40000 个锚点进行高斯 splat，比仅基于 10475 个顶点的三角形光栅化能获得更精细的纹理细节。
+
+正在细化高斯直插方案：为每个锚点寻找最近的 SMPL 顶点 UV 坐标，或在最近三角形上做三线性插值得到 UV，再以小半径高斯盘直接 splat 颜色。这样可直接利用约 40000 个锚点样本，而非仅靠 10475 个顶点插值。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "glob": "requirements*",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "trimesh"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "trimesh",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api/requirements.txt"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+已确认 trimesh 可用，准备实施修复。
+
+计划新增 UV 插值函数，通过重心坐标从网格采样纹理坐标。将实现高斯锚点直接 splat 的烘焙逻辑，并加入双边滤波与孔洞修补来细化纹理。同时调整 bake_diffuse_from_gaussian_ply：有锚点时直接 splat，否则回退到三角形光栅化。
+
+正在编写 UV 插值函数的具体实现。考虑使用 trimesh 的 nearest.on_surface 获取最近表面点，再通过 points_to_barycentric 计算三角形重心坐标，从而精确插值纹理坐标。</details></think>

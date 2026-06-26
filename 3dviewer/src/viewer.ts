@@ -63,6 +63,14 @@ function isUntexturedDefault(material: THREE.Material): boolean {
   return DEFAULT_GRAY.has(mat.color.getHex());
 }
 
+function createUnlitTextureMaterial(map: THREE.Texture): THREE.MeshBasicMaterial {
+  map.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({
+    map,
+    toneMapped: false,
+  });
+}
+
 function createSkinMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: SKIN_COLOR,
@@ -82,9 +90,21 @@ function enhanceMeshAppearance(object: THREE.Object3D): void {
 
     const upgradeMaterial = (material: THREE.Material): THREE.Material => {
       if (materialHasTexture(material)) {
-        if (material instanceof THREE.MeshStandardMaterial) {
-          material.roughness = material.roughness ?? 0.55;
-          material.metalness = material.metalness ?? 0.02;
+        // 3DGS 烘焙贴图 = albedo，与 splat 一样应无光照显示（勿用 Standard + 灯光）
+        if (material instanceof THREE.MeshStandardMaterial && material.map) {
+          const map = material.map;
+          material.dispose();
+          return createUnlitTextureMaterial(map);
+        }
+        if (material instanceof THREE.MeshPhongMaterial && material.map) {
+          const map = material.map;
+          material.dispose();
+          return createUnlitTextureMaterial(map);
+        }
+        if (material instanceof THREE.MeshLambertMaterial && material.map) {
+          const map = material.map;
+          material.dispose();
+          return createUnlitTextureMaterial(map);
         }
         return material;
       }
