@@ -11,7 +11,6 @@ import numpy as np
 
 from config import settings
 from services.blender_fbx_export import export_skinned_fbx
-from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +245,8 @@ def _load_anchor_points(
     cano_pose_type: int = 1,
 ) -> np.ndarray:
     """加载 LHM++ 在 SMPL-X 表面的 dense_sample 锚点（与推理时 `{cano}_{pts}.ply` 一致）。"""
+    from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts
+
     cache_dir = lhm_root / "pretrained_models" / "dense_sample_points"
 
     if gaussian_count and gaussian_count > 0:

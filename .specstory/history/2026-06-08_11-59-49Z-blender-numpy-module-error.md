@@ -16305,4 +16305,741 @@ Directory: **D:\WorkSpace\mkdevkit\hrm** (0 files)
 _**Agent (default)**_
 
 <think><details><summary>Thought Process</summary>
-Blender 命令中纹理仍显示 `-`，但 `smplx_uv.obj` </details></think>
+Blender 命令中纹理仍显示 `-`，但 `smplx_uv.obj` 已存在于服务器的 `api/assets/` 目录下。
+
+怀疑 `_candidate_uv_paths` 的查找顺序导致错误的 `.obj` 文件被优先匹配。计划将 `api/assets/smplx_uv.obj` 提前到 `SMPL_Layer` 和 `human_model` 搜索之前，并放宽 `parse_obj_uv` 对 UV 面数不匹配的处理，同时避免重复加载纹理。
+
+进一步确认 `_candidate_uv_paths` 的候选顺序：`settings.smplx_uv_obj` 之后是 bundled 的 `api/assets/smplx_uv.obj`，随后才是 `human_model` 的 rglob 模式。rglob 会匹配所有 `.obj` 文件，可能在 bundled 路径之前就选中了错误的模型。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": true,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "export.*mesh|mesh_export|bake.*texture"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "export.*mesh|mesh_export|bake.*texture",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api\\.env.example"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\services\\mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\config.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/services/blender_fbx_export.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api/scripts/blender_export_fbx.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\services\\blender_fbx_export.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    },
+    {
+      "matchCount": 2,
+      "uri": "api\\services\\texture_bake_service.py"
+    },
+    {
+      "matchCount": 4,
+      "uri": "api/routers/avatars.py"
+    },
+    {
+      "matchCount": 11,
+      "uri": "api/services/lhmpp_service.py"
+    }
+  ],
+  "totalFiles": 11,
+  "totalMatches": 29
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\.env</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+本地 .env 未配置 FBX_BAKE_TEXTURE，该选项默认为 True。
+
+服务端 bake 失败可能是因为 smplx_uv.obj 在运行后才生成。我将增强 UV 加载的健壮性并添加更详细的日志。同时考虑增加一个无需完整重建即可重新烘焙和导出 FBX 的辅助功能。正在检查是否已有对应的重导出接口，并分析 smplx_uv.obj 的顶点与 UV 索引对齐方式。
+
+发现 bake 失败的另一个潜在原因：UV 面索引可能混用了顶点数组和 UV 数组，导致索引空间不匹配。需要确保几何面索引与 UV 面索引分别对应各自的数组长度。同时准备处理 OBJ 中无 UV 的面格式。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers",
+  "pattern": "skinned|fbx|mesh"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers",
+  "pattern": "skinned|fbx|mesh",
+  "topFiles": [
+    {
+      "matchCount": 15,
+      "uri": "api/routers/avatars.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 15
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将实现健壮的 UV 加载逻辑，优先使用 api/assets/smplx_uv.obj。</details></think>
+
+_**Agent (default)**_
+
+`smplx_uv.obj` 已就位，但贴图烘焙仍失败（Blender 收到 `-`）。正在加强 UV 加载逻辑并添加仅重烘焙/重导出 FBX 的工具。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+计划添加 `_bundled_smplx_uv_path()` 辅助函数。
+
+将新增 `_try_load_uv_from_file` 统一处理 pkl/npz/obj/trimesh 加载与逐顶点回退。`load_smplx_uv` 会优先尝试用户放置的 bundled 或 settings 路径。同时改进 `parse_obj_uv` 以支持仅含顶点纹理坐标的 obj 文件，并跳过四边形面片的三角化处理。
+
+新增 `_load_uv_from_obj_path` 作为 `_try_load_uv_from_file` 的具体实现。该函数优先调用 `parse_obj_uv` 解析 obj 中的纹理坐标；若解析失败，则回退到 trimesh 加载。当 obj 中的 uv 面片数与 mesh 面片数一致时直接返回；否则按顶点数量进行逐顶点匹配。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+旧版 NumPy 的 `max()` 不支持 `initial=0` 参数。改用 `faces.max() if len else 0`。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\rebake_avatar_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "contextAfter": 25,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "def _write_obj"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "def _write_obj",
+  "topFiles": [
+    {
+      "matchCount": 26,
+      "uri": "api\\services\\mesh_export_service.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+`smplx_uv.obj` 已经放对位置了，但这条日志说明 **贴图烘焙没有成功**——Blender 命令里第 5 个参数是 `-`，表示没有找到 `avatar_diffuse.png`。
+
+## 原因分析
+
+1. **烘焙失败时 FBX 仍会导出**，只是没有贴图。
+2. 较可能的根因：旧逻辑会 **先读 LHM++ 的 `SMPL_Layer.bm_x` UV**，若索引与网格不匹配，烘焙会抛 `IndexError`，被捕获后 `texture_path = None`，Blender 就收到 `-`。
+3. 即使 `api/assets/smplx_uv.obj` 已存在，若 **代码未更新** 或 **本次任务在放置文件之前已跑完**，也不会用到它。
+
+## 代码已做的修复
+
+- **优先** 使用 `SMPLX_UV_OBJ` / `api/assets/smplx_uv.obj`（在 LHM++ bm_x 之前）
+- 校验 UV 索引有效性，无效则继续尝试其他来源或柱面回退
+- 烘焙失败时打印完整堆栈（`exc_info=True`）
+- 新增重烘焙脚本，无需重跑 3D 重建
+
+## 在服务器上操作
+
+1. **同步最新代码** 到 `/root/hrm/api`
+2. 确认 `.env` 中有（或依赖默认值）：
+   ```env
+   FBX_BAKE_TEXTURE=true
+   ```
+3. **对已有 avatar 重烘焙 + 重导出 FBX**：
+   ```bash
+   cd /root/hrm/api
+   python scripts/rebake_avatar_fbx.py \
+     data/avatars/4e8666bb-a632-4a54-ba44-b2aa7a8bc37d/output
+   ```
+
+成功时应看到类似日志：
+
+- `SMPL-X UV 来自 /root/hrm/api/assets/smplx_uv.obj`
+- `UV 贴图已烘焙: avatar_diffuse.png (2048px)`
+- Blender 命令中贴图参数为 `.../avatar_diffuse.png`，而不是 `-`
+
+4. 验证输出：
+   ```bash
+   ls data/avatars/4e8666bb-a632-4a54-ba44-b2aa7a8bc37d/output/avatar_diffuse.png
+   ```
+
+若仍失败，请把 **`3DGS UV 贴图烘焙失败`** 后面的完整 traceback 发过来，便于进一步定位（例如缺 `scipy`/`opencv-python` 或 PLY 路径不对）。
+
+---
+
+_**User**_
+
+(base) root@ef6249f21343:~/hrm/api# python scripts/rebake_avatar_fbx.py data/avatars/4e8666bb-a632-4a54
+-ba44-b2aa7a8bc37d/output
+
+Traceback (most recent call last):
+  File "/root/hrm/api/scripts/rebake_avatar_fbx.py", line 39, in <module>
+    raise SystemExit(main())
+  File "/root/hrm/api/scripts/rebake_avatar_fbx.py", line 31, in main
+    from services.mesh_export_service import rebake_skinned_mesh_from_output_dir
+  File "/root/hrm/api/services/mesh_export_service.py", line 14, in <module>
+    from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts
+  File "/root/hrm/api/services/lhm_infer_utils.py", line 19, in <module>
+    from core.utils.app_utils import obtain_ref_imgs
+ModuleNotFoundError: No module named 'core'
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The script fails because Python cannot find the `core` module.</details></think>
+
+_**Agent (default)**_
+
+重烘焙脚本导入 `mesh_export_service` 时触发了 LHM++ 依赖。正在检查导入链并修复。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "lhm_infer_utils|list_dense_sample|resolve_dense_sample"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+  "pattern": "lhm_infer_utils|list_dense_sample|resolve_dense_sample",
+  "topFiles": [
+    {
+      "matchCount": 4,
+      "uri": "api\\services\\mesh_export_service.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 4
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhm_infer_utils.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\rebake_avatar_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The `core` import error stems from a top-level dependency in `lhm_infer_utils`. I'll move that import to a lazy load inside `_load_anchor_points` instead.
+
+The rebake script should load config and set LHM_ROOT early. Config loads without LHM. Texture baking may not need LHM core if assets are bundled. The lazy import fix should suffice.</details></think>
+
+_**Agent (default)**_
+
+将 `lhm_infer_utils` 改为延迟导入，避免重烘焙脚本加载整个 LHM++ 依赖链。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\rebake_avatar_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+The rebake script may still need SMPL_Layer from LHM's texture_bake. Adding lhm_root to sys.path should let it import engine.pose_estimation.blocks.</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\rebake_avatar_fbx.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\rebake_avatar_fbx.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+已修复。原因是 `mesh_export_service.py` 在模块加载时就 import 了 `lhm_infer_utils`，而后者依赖 LHM++ 的 `core` 包；重烘焙脚本不需要这些模块，却会一并触发。
+
+**改动：**
+1. 将 `lhm_infer_utils` 改为仅在 `_load_anchor_points()` 内延迟导入（完整 3D 导出才用到）
+2. `rebake_avatar_fbx.py` 启动时会把 `LHM_ROOT` 加入 `sys.path`（回退到 SMPL_Layer 时需要）
+
+请把更新后的代码同步到服务器后重试：
+
+```bash
+cd /root/hrm/api
+python scripts/rebake_avatar_fbx.py \
+  data/avatars/4e8666bb-a632-4a54-ba44-b2aa7a8bc37d/output
+```
+
+若 `api/assets/smplx_uv.obj` 已就位，应能看到 `SMPL-X UV 来自 .../assets/smplx_uv.obj`，并生成 `avatar_diffuse.png`。
+
+若仍有报错，把完整 traceback 贴过来。

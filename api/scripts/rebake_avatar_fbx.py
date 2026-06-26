@@ -9,11 +9,21 @@ import sys
 from pathlib import Path
 
 API_ROOT = Path(__file__).resolve().parents[1]
-if str(API_ROOT) not in sys.path:
-    sys.path.insert(0, str(API_ROOT))
+
+
+def _bootstrap_paths() -> None:
+    if str(API_ROOT) not in sys.path:
+        sys.path.insert(0, str(API_ROOT))
+    from config import settings
+
+    if settings.lhm_root:
+        lhm = Path(settings.lhm_root).resolve()
+        if lhm.is_dir() and str(lhm) not in sys.path:
+            sys.path.insert(0, str(lhm))
 
 
 def main() -> int:
+    _bootstrap_paths()
     parser = argparse.ArgumentParser(description="重烘焙 avatar_diffuse.png 并导出 avatar_skinned.fbx")
     parser.add_argument(
         "output_dir",
