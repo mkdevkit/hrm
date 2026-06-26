@@ -267,7 +267,7 @@ class LHMPPService:
             auto_query = AutoModelQuery(save_dir=str(root / "pretrained_models"))
             model_path = auto_query.query(settings.model_name)
 
-        from scripts.inference.to_gs_ply import run_tpose_export
+        from services.lhm_gs_export import run_tpose_export_with_sidecars
         from services.lhm_infer_utils import setup_loaders_for_hrm
 
         args = SimpleNamespace(
@@ -305,12 +305,13 @@ class LHMPPService:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            run_tpose_export(
+            run_tpose_export_with_sidecars(
                 model,
                 ref_imgs_tensor,
                 motion_seqs,
                 device=device,
                 output_ply=str(ply_out),
+                sidecar_dir=output_dir,
                 export_animation_pose=False,
             )
             betas = smplx_params.get("betas")

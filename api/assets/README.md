@@ -16,12 +16,11 @@ SMPLX_UV_OBJ=/path/to/smplx_uv.obj
 
 未提供官方 UV 时，HRM 会自动使用**柱面 UV 回退**（能烘焙颜色，但接缝与精度不如官方 UV）。
 
-## 已有 avatar 仅重烘焙贴图 / 重导出 FBX
+## 蒙皮网格与 3DGS 对齐（重要）
 
-无需重跑 3D 重建，在 `api` 目录执行（**会从 PLY 重新位移网格并烘焙**，不是只刷旧 OBJ）：
+3D 重建时会写入 `gs_anchors.npy`（与 PLY 高斯**逐点索引对齐**的 `neutral_coords`）。
+**仅 rebake 不能生成该文件**；若 FBX 与 3DGS 严重错位，请用 Web/API **重新跑一次 3D 重建**（勾选导出蒙皮网格），再 rebake。
 
 ```bash
 python scripts/rebake_avatar_fbx.py data/avatars/<avatar_id>/output
 ```
-
-成功时日志应出现 `锚点 PLY`、`顶点色来自锚点对齐插值`、`UV 顶点 splat 烘焙`。

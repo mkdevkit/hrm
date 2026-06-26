@@ -176,6 +176,94 @@ def _load_smplx_mesh(
     return verts, faces, weights, joint_names, joints
 
 
+def _lhm_canonical_poses_tensor(device: torch.device) -> torch.Tensor:
+    """LHM++ ``cano_body_pose_template`` 对应的 53 关节 axis-angle。"""
+    import math
+    import torch
+
+    poses = torch.zeros(1, 53, 3, device=device)
+    # body_pose[0,1] -> left/right hip z（SMPL-X 关节 1,2）
+    poses[0, 1, 2] = math.pi / 12
+    poses[0, 2, 2] = -math.pi / 12
+    # body_pose[15,16] -> left/right wrist z（关节 20,21）
+    poses[0, 20, 2] = -math.pi / 6
+    poses[0, 21, 2] = math.pi / 6
+    return poses
+
+
+def _load_smplx_mesh_lhm_canonical(
+    lhm_root: Path,
+    betas: Optional[np.ndarray] = None,
+    *,
+    output_dir: Path | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], np.ndarray]:
+    """SMPL-X 网格；优先 LHM 推理 sidecar 顶点，否则 LHM canonical pose + betas。"""
+    sidecar_verts: np.ndarray | None = None
+    if output_dir is not None:
+        sidecar_path = output_dir / "smplx_canonical_verts.npy"
+        if sidecar_path.is_file():
+            sidecar_verts = np.load(sidecar_path).astype(np.float32)
+            logger.info("SMPL-X 顶点来自推理 sidecar (%d verts)", len(sidecar_verts))
+
+    import sys
+    import torch
+
+    if str(lhm_root) not in sys.path:
+        sys.path.insert(0, str(lhm_root))
+
+    human_model = lhm_root / "pretrained_models" / "human_model_files"
+    from engine.pose_estimation.blocks import SMPL_Layer
+
+    layer = SMPL_Layer(
+        str(human_model),
+        type="smplx",
+        gender="neutral",
+        num_betas=10,
+        kid=False,
+        person_center="head",
+    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    layer = layer.to(device)
+
+    if betas is None:
+        betas = np.zeros(10, dtype=np.float32)
+    betas_t = torch.tensor(betas[:10], dtype=torch.float32, device=device).unsqueeze(0)
+    poses = _lhm_canonical_poses_tensor(device)
+
+    with torch.no_grad():
+        output = layer.forward_local(poses, betas_t)
+        if output is None:
+            raise RuntimeError("SMPL_Layer.forward_local 返回空结果")
+
+    verts = output.vertices[0].detach().cpu().numpy().astype(np.float32)
+    if sidecar_verts is not None and len(sidecar_verts) == len(verts):
+        verts = sidecar_verts
+    elif sidecar_verts is not None:
+        logger.warning(
+            "sidecar 顶点数 (%d) 与 SMPL-X (%d) 不一致，使用 LHM canonical pose 网格",
+            len(sidecar_verts),
+            len(verts),
+        )
+
+    faces = layer.bm_x.faces_tensor.detach().cpu().numpy().astype(np.int32)
+    weights = layer.bm_x.lbs_weights.detach().cpu().numpy().astype(np.float32)
+    joint_names = SMPLX_JOINT_NAMES[: weights.shape[1]]
+
+    if hasattr(output, "joints") and output.joints is not None:
+        joints = output.joints[0].detach().cpu().numpy().astype(np.float32)
+        if joints.ndim == 3:
+            joints = joints[0]
+    else:
+        j_reg = getattr(layer.bm_x, "J_regressor", None)
+        if j_reg is not None:
+            jv = torch.tensor(verts, dtype=torch.float32, device=j_reg.device)
+            joints = torch.matmul(j_reg, jv).detach().cpu().numpy().astype(np.float32)
+        else:
+            joints = _estimate_joint_positions(verts, weights, len(joint_names))
+
+    return verts, faces, weights, joint_names, joints
+
+
 def _estimate_joint_positions(
     verts: np.ndarray,
     weights: np.ndarray,
@@ -241,10 +329,28 @@ def _read_ply_xyz(ply_path: Path) -> np.ndarray:
 def _load_anchor_points(
     lhm_root: Path,
     *,
+    output_dir: Path | None = None,
     gaussian_count: Optional[int] = None,
     cano_pose_type: int = 1,
 ) -> np.ndarray:
-    """加载 LHM++ 在 SMPL-X 表面的 dense_sample 锚点（与推理时 `{cano}_{pts}.ply` 一致）。"""
+    """加载与 PLY 高斯索引对齐的锚点；优先推理 sidecar，其次 dense_sample 缓存。"""
+    if output_dir is not None:
+        sidecar = output_dir / "gs_anchors.npy"
+        if sidecar.is_file():
+            anchors = np.load(sidecar).astype(np.float32)
+            if gaussian_count and len(anchors) != gaussian_count:
+                raise RuntimeError(
+                    f"gs_anchors.npy ({len(anchors)}) 与 PLY 高斯数 ({gaussian_count}) 不一致；"
+                    "请用最新 HRM 重新跑 3D 重建以生成 sidecar"
+                )
+            logger.info("锚点来自推理 sidecar gs_anchors.npy (%d points)", len(anchors))
+            return anchors
+        logger.warning(
+            "未找到 %s：蒙皮网格将用 dense_sample 缓存锚点，可能与 3DGS 严重错位。"
+            " 请重新执行 3D 重建（非仅 rebake）以生成 gs_anchors.npy",
+            sidecar,
+        )
+
     from services.lhm_infer_utils import list_dense_sample_cache, resolve_dense_sample_pts
 
     cache_dir = lhm_root / "pretrained_models" / "dense_sample_points"
@@ -490,8 +596,12 @@ def export_skinned_mesh_from_gaussian(
 
     gaussian_xyz = read_gaussian_ply_xyz(ply_path)
     logger.info("高斯 PLY: %s (%d points)", ply_path.name, len(gaussian_xyz))
-    anchor_xyz = _load_anchor_points(root, gaussian_count=len(gaussian_xyz))
-    mesh_verts, faces, lbs_weights, joint_names, joint_positions = _load_smplx_mesh(root, betas_arr)
+    anchor_xyz = _load_anchor_points(
+        root, output_dir=output_dir, gaussian_count=len(gaussian_xyz)
+    )
+    mesh_verts, faces, lbs_weights, joint_names, joint_positions = _load_smplx_mesh_lhm_canonical(
+        root, betas_arr, output_dir=output_dir
+    )
     displaced_verts = apply_gaussian_displacement(mesh_verts, gaussian_xyz, anchor_xyz)
 
     obj_path = output_dir / "avatar_skinned.obj"
