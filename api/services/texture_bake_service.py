@@ -393,6 +393,24 @@ def load_smplx_uv(
     )
 
 
+def _barycentric_on_triangle(point: np.ndarray, tri: np.ndarray) -> np.ndarray:
+    """3D 点在三角面上的重心坐标（退化时返回均匀权重）。"""
+    a, b, c = tri[0], tri[1], tri[2]
+    v0, v1, v2 = b - a, c - a, point - a
+    d00 = float(np.dot(v0, v0))
+    d01 = float(np.dot(v0, v1))
+    d11 = float(np.dot(v1, v1))
+    d20 = float(np.dot(v2, v0))
+    d21 = float(np.dot(v2, v1))
+    denom = d00 * d11 - d01 * d01
+    if abs(denom) < 1e-12:
+        return np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0], dtype=np.float32)
+    v = (d11 * d20 - d01 * d21) / denom
+    w = (d00 * d21 - d01 * d20) / denom
+    u = 1.0 - v - w
+    return np.array([u, v, w], dtype=np.float32)
+
+
 def sample_uv_at_mesh_points(
     mesh_verts: np.ndarray,
     faces: np.ndarray,
@@ -400,18 +418,44 @@ def sample_uv_at_mesh_points(
     uv_faces: np.ndarray,
     points: np.ndarray,
 ) -> np.ndarray:
-    """将 3D 点投影到网格表面，再插值得到 UV（用于逐高斯烘焙）。"""
-    import trimesh
-    from trimesh.triangles import points_to_barycentric
+    """将 3D 点映射到网格 UV（仅用 scipy，不依赖 trimesh/rtree）。"""
+    from scipy.spatial import cKDTree
 
-    mesh = trimesh.Trimesh(vertices=mesh_verts, faces=faces, process=False)
-    closest, _dist, tri_ids = trimesh.proximity.closest_point(mesh, points)
-    tri_verts = mesh.vertices[mesh.faces[tri_ids]]
-    bary = points_to_barycentric(tri_verts, closest)
-    geom_idx = faces[tri_ids]
-    uv_idx = uv_faces[tri_ids]
-    uv_corners = uvs[uv_idx]
-    return (uv_corners * bary[:, :, None]).sum(axis=1).astype(np.float32)
+    points = np.asarray(points, dtype=np.float32)
+    mesh_verts = np.asarray(mesh_verts, dtype=np.float32)
+
+    if len(uvs) == len(mesh_verts):
+        k = min(4, len(mesh_verts))
+        dists, indices = cKDTree(mesh_verts).query(points, k=k)
+        if k == 1:
+            dists = dists[:, None]
+            indices = indices[:, None]
+        weights = 1.0 / (dists + 1e-6)
+        weights /= weights.sum(axis=1, keepdims=True)
+        return (uvs[indices] * weights[..., None]).sum(axis=1).astype(np.float32)
+
+    tri_xyz = mesh_verts[faces]
+    centroids = tri_xyz.mean(axis=1)
+    k_tri = min(8, len(faces))
+    _, tri_ids = cKDTree(centroids).query(points, k=k_tri)
+    if k_tri == 1:
+        tri_ids = tri_ids[:, None]
+
+    out = np.zeros((len(points), 2), dtype=np.float32)
+    for pi in range(len(points)):
+        best_dist = np.inf
+        best_uv = uvs[uv_faces[tri_ids[pi, 0]]].mean(axis=0)
+        for tid in tri_ids[pi]:
+            tri = tri_xyz[tid]
+            bc = _barycentric_on_triangle(points[pi], tri)
+            proj = tri[0] * bc[0] + tri[1] * bc[1] + tri[2] * bc[2]
+            dist = float(np.linalg.norm(proj - points[pi]))
+            if dist < best_dist:
+                best_dist = dist
+                uv_corners = uvs[uv_faces[tid]]
+                best_uv = (uv_corners * bc[:, None]).sum(axis=0)
+        out[pi] = best_uv
+    return out
 
 
 def gaussian_splat_colors_to_texture(
