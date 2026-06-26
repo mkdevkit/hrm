@@ -54,6 +54,8 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "lhmpp_available": lhmpp_service.available,
+        "model_loaded": lhmpp_service.model_loaded,
+        "preload_model": settings.preload_model,
         "mock_mode": settings.mock_mode,
         "infer_low_memory": settings.infer_low_memory,
         "infer_max_image_size": settings.effective_infer_max_image_size,

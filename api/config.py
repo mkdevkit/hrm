@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # 无 GPU 时启用 mock 模式（仅用于前端联调）
     mock_mode: bool = False
 
+    # 启动时预加载 LHM++ 模型（动作驱动）；false 则首次调用 animate 时再加载
+    preload_model: bool = True
+
     # 推理显存控制（测试 / 低显存 GPU）
     # INFER_LOW_MEMORY=true 时默认：ref_view≤4、输入高 560px、动画 batch=8
     infer_low_memory: bool = False

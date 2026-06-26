@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from contextlib import contextmanager
@@ -9,6 +10,8 @@ from typing import Any, Iterator, Optional
 
 from config import settings
 from services.platform_compat import apply_lhm_import_compat
+
+logger = logging.getLogger(__name__)
 
 
 def _prior_model_check(save_dir: Path) -> None:
@@ -44,6 +47,10 @@ class LHMPPService:
         self._cfg = None
 
     @property
+    def model_loaded(self) -> bool:
+        return self._initialized
+
+    @property
     def available(self) -> bool:
         if settings.mock_mode:
             return True
@@ -74,17 +81,27 @@ class LHMPPService:
             os.chdir(prev_cwd)
 
     def initialize(self) -> None:
-        if self._initialized or settings.mock_mode:
+        if self._initialized:
+            return
+        if settings.mock_mode:
             self._initialized = True
+            logger.info("Mock 模式，跳过 LHM++ 模型加载")
             return
 
+        logger.info("正在加载 LHM++ 模型 (model=%s)...", settings.model_name)
         root = self._ensure_lhm_path()
         with self._lhm_runtime(root):
-            self._initialize_models(root)
+            load_path = self._initialize_models(root)
 
         self._initialized = True
+        logger.info(
+            "LHM++ 模型加载完成 | model=%s path=%s pose_estimator=%s device=cuda",
+            settings.model_name,
+            load_path,
+            "on" if self._pose_estimator else "off",
+        )
 
-    def _initialize_models(self, root: Path) -> None:
+    def _initialize_models(self, root: Path) -> str:
         os.environ.update(
             {
                 "APP_ENABLED": "1",
@@ -164,6 +181,8 @@ class LHMPPService:
             self._pose_estimator.device = "cuda"
         else:
             self._pose_estimator = None
+
+        return load_path
 
     def reconstruct_avatar(
         self,
