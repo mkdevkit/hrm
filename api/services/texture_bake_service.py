@@ -53,11 +53,35 @@ def sample_colors_at_vertices(
     *,
     k_neighbors: int = 8,
 ) -> np.ndarray:
-    """用最近邻高斯颜色插值得到网格顶点色。"""
+    """用最近邻高斯颜色插值得到网格顶点色（无锚点时的回退）。"""
     from scipy.spatial import cKDTree
 
     k = min(k_neighbors, len(gaussian_xyz))
     dists, indices = cKDTree(gaussian_xyz).query(mesh_verts, k=k)
+    if k == 1:
+        dists = dists[:, None]
+        indices = indices[:, None]
+    weights = 1.0 / (dists + 1e-6)
+    weights /= weights.sum(axis=1, keepdims=True)
+    return (gaussian_rgb[indices] * weights[..., None]).sum(axis=1).astype(np.float32)
+
+
+def sample_colors_at_vertices_via_anchors(
+    mesh_verts: np.ndarray,
+    gaussian_rgb: np.ndarray,
+    anchor_xyz: np.ndarray,
+    *,
+    k_neighbors: int = 8,
+) -> np.ndarray:
+    """与位移场相同的锚点 kNN 插值，保证颜色与高斯索引一一对应。"""
+    from scipy.spatial import cKDTree
+
+    if len(gaussian_rgb) != len(anchor_xyz):
+        raise ValueError(
+            f"高斯颜色数 ({len(gaussian_rgb)}) 与锚点数 ({len(anchor_xyz)}) 不一致"
+        )
+    k = min(k_neighbors, len(anchor_xyz))
+    dists, indices = cKDTree(anchor_xyz).query(mesh_verts, k=k)
     if k == 1:
         dists = dists[:, None]
         indices = indices[:, None]
@@ -369,7 +393,36 @@ def load_smplx_uv(
     )
 
 
-def _barycentric(px: float, py: float, tri: np.ndarray) -> tuple[float, float, float] | None:
+def bake_vertex_colors_vertex_splat(
+    uvs: np.ndarray,
+    vert_colors: np.ndarray,
+    *,
+    size: int = 2048,
+) -> np.ndarray:
+    """SMPL-X 每顶点一组 UV：直接 splat 到贴图（毫秒级）。"""
+    tex = np.zeros((size, size, 3), dtype=np.float32)
+    weight = np.zeros((size, size), dtype=np.float32)
+    u = np.clip(uvs[:, 0], 0.0, 1.0)
+    v = np.clip(uvs[:, 1], 0.0, 1.0)
+    xi = np.clip((u * (size - 1)).astype(np.int32), 0, size - 1)
+    yi = np.clip(((1.0 - v) * (size - 1)).astype(np.int32), 0, size - 1)
+    np.add.at(tex[..., 0], (yi, xi), vert_colors[:, 0])
+    np.add.at(tex[..., 1], (yi, xi), vert_colors[:, 1])
+    np.add.at(tex[..., 2], (yi, xi), vert_colors[:, 2])
+    np.add.at(weight, (yi, xi), 1.0)
+    mask = weight > 1e-6
+    tex[mask] /= weight[mask, None]
+    holes = (~mask).astype(np.uint8) * 255
+    if holes.any() and mask.any():
+        fill = (np.clip(tex, 0, 1) * 255).astype(np.uint8)
+        fill = cv2.inpaint(fill, holes, 3, cv2.INPAINT_TELEA)
+        tex = fill.astype(np.float32) / 255.0
+    return np.clip(tex, 0.0, 1.0)
+
+
+def _barycentric_batch(
+    px: np.ndarray, py: np.ndarray, tri: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     x0, y0 = tri[0]
     x1, y1 = tri[1]
     x2, y2 = tri[2]
@@ -379,9 +432,7 @@ def _barycentric(px: float, py: float, tri: np.ndarray) -> tuple[float, float, f
     w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom
     w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom
     w2 = 1.0 - w0 - w1
-    if w0 < -1e-4 or w1 < -1e-4 or w2 < -1e-4:
-        return None
-    return float(w0), float(w1), float(w2)
+    return w0, w1, w2
 
 
 def bake_vertex_colors_to_texture(
@@ -393,6 +444,8 @@ def bake_vertex_colors_to_texture(
     size: int = 2048,
 ) -> np.ndarray:
     """将顶点色光栅化到 UV 纹理（float32 RGB 0–1）。"""
+    n_faces = len(uv_faces)
+    logger.info("开始 UV 光栅化: %d 三角面, %d×%d", n_faces, size, size)
     tex = np.zeros((size, size, 3), dtype=np.float32)
     weight = np.zeros((size, size), dtype=np.float32)
     geom_faces = geom_faces if geom_faces is not None else uv_faces
@@ -401,28 +454,53 @@ def bake_vertex_colors_to_texture(
     uv_px[:, 0] = np.clip(uvs[:, 0], 0.0, 1.0) * (size - 1)
     uv_px[:, 1] = (1.0 - np.clip(uvs[:, 1], 0.0, 1.0)) * (size - 1)
 
-    for face_i in range(len(uv_faces)):
+    log_step = max(1, n_faces // 10)
+    for face_i in range(n_faces):
+        if face_i > 0 and face_i % log_step == 0:
+            logger.info("UV 光栅化进度: %d/%d (%.0f%%)", face_i, n_faces, 100.0 * face_i / n_faces)
+
         vi_uv = uv_faces[face_i]
         vi_geom = geom_faces[face_i]
         tri = uv_px[vi_uv]
         cols = vert_colors[vi_geom]
+
         min_x = max(0, int(np.floor(tri[:, 0].min())))
         max_x = min(size - 1, int(np.ceil(tri[:, 0].max())))
         min_y = max(0, int(np.floor(tri[:, 1].min())))
         max_y = min(size - 1, int(np.ceil(tri[:, 1].max())))
-        for y in range(min_y, max_y + 1):
-            py = float(y) + 0.5
-            for x in range(min_x, max_x + 1):
-                px = float(x) + 0.5
-                bc = _barycentric(px, py, tri)
-                if bc is None:
-                    continue
-                w0, w1, w2 = bc
-                color = cols[0] * w0 + cols[1] * w1 + cols[2] * w2
-                w = w0 + w1 + w2
-                tex[y, x] += color * w
-                weight[y, x] += w
+        if min_x > max_x or min_y > max_y:
+            continue
 
+        xs = np.arange(min_x, max_x + 1, dtype=np.float32) + 0.5
+        ys = np.arange(min_y, max_y + 1, dtype=np.float32) + 0.5
+        gx, gy = np.meshgrid(xs, ys, indexing="xy")
+        px_flat = gx.ravel()
+        py_flat = gy.ravel()
+
+        bc = _barycentric_batch(px_flat, py_flat, tri)
+        if bc is None:
+            continue
+        w0, w1, w2 = bc
+        inside = (w0 >= -1e-4) & (w1 >= -1e-4) & (w2 >= -1e-4)
+        if not inside.any():
+            continue
+
+        w_sum = w0 + w1 + w2
+        color = (
+            cols[0] * w0[inside, None]
+            + cols[1] * w1[inside, None]
+            + cols[2] * w2[inside, None]
+        )
+        xi = px_flat[inside].astype(np.int32)
+        yi = py_flat[inside].astype(np.int32)
+        ws = w_sum[inside]
+
+        np.add.at(tex, (yi, xi, 0), color[:, 0] * ws)
+        np.add.at(tex, (yi, xi, 1), color[:, 1] * ws)
+        np.add.at(tex, (yi, xi, 2), color[:, 2] * ws)
+        np.add.at(weight, (yi, xi), ws)
+
+    logger.info("UV 光栅化完成，填充空洞…")
     mask = weight > 1e-6
     tex[mask] /= weight[mask, None]
 
@@ -450,25 +528,40 @@ def bake_diffuse_from_gaussian_ply(
     texture_size: int = 2048,
     uvs: np.ndarray | None = None,
     uv_faces: np.ndarray | None = None,
+    anchor_xyz: np.ndarray | None = None,
 ) -> Path:
     """3DGS PLY → SMPL-X UV diffuse 贴图。"""
+    logger.info("读取 3DGS PLY: %s", ply_path.name)
     gaussian_xyz, gaussian_rgb = read_gaussian_ply_rgb(ply_path)
-    vert_colors = sample_colors_at_vertices(mesh_verts, gaussian_xyz, gaussian_rgb)
+    logger.info("高斯点 %d，插值顶点色…", len(gaussian_xyz))
+    if anchor_xyz is not None and len(anchor_xyz) == len(gaussian_rgb):
+        vert_colors = sample_colors_at_vertices_via_anchors(
+            mesh_verts, gaussian_rgb, anchor_xyz
+        )
+        logger.info("顶点色来自锚点对齐插值（与位移场一致）")
+    else:
+        logger.warning(
+            "锚点不可用，回退 kNN 高斯坐标采样（颜色可能与 3DGS 不一致）"
+        )
+        vert_colors = sample_colors_at_vertices(mesh_verts, gaussian_xyz, gaussian_rgb)
     if uvs is None or uv_faces is None:
         uvs, uv_faces = load_smplx_uv(lhm_root, faces, mesh_verts=mesh_verts)
     elif not _uv_indices_valid(uvs, uv_faces, faces, mesh_verts):
         raise ValueError(
             f"预加载 UV 索引无效: uvs={len(uvs)}, uv_faces={len(uv_faces)}, faces={len(faces)}"
         )
-    if len(uvs) != len(mesh_verts):
+    if len(uvs) == len(vert_colors):
+        logger.info("UV 顶点 splat 烘焙 (%d 顶点, %dpx)", len(uvs), texture_size)
+        texture = bake_vertex_colors_vertex_splat(uvs, vert_colors, size=texture_size)
+    else:
         logger.info(
-            "UV 坐标数 (%d) 与网格顶点 (%d) 不同，使用 geom_faces 映射顶点色",
+            "UV 与网格顶点数不同 (%d vs %d)，使用三角面光栅化",
             len(uvs),
-            len(mesh_verts),
+            len(vert_colors),
         )
-    texture = bake_vertex_colors_to_texture(
-        uvs, uv_faces, vert_colors, geom_faces=faces, size=texture_size
-    )
+        texture = bake_vertex_colors_to_texture(
+            uvs, uv_faces, vert_colors, geom_faces=faces, size=texture_size
+        )
     save_texture_png(texture, output_png)
     logger.info("UV 贴图已烘焙: %s (%dpx)", output_png.name, texture_size)
     return output_png

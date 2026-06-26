@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -23,6 +24,10 @@ def _bootstrap_paths() -> None:
 
 
 def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     _bootstrap_paths()
     parser = argparse.ArgumentParser(description="重烘焙 avatar_diffuse.png 并导出 avatar_skinned.fbx")
     parser.add_argument(
