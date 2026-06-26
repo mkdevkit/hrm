@@ -7,9 +7,13 @@
 
 from __future__ import annotations
 
+import ast
+import array
 import json
+import struct
 import sys
 import traceback
+import zipfile
 from pathlib import Path
 
 import bpy
@@ -115,31 +119,90 @@ def _create_armature(joint_names: list[str], parents: list[int], joints: list[li
     return arm_obj
 
 
-def _assign_vertex_groups(mesh_obj: bpy.types.Object, joint_names: list[str], weights) -> None:
-    import numpy as np
+def _load_npy_array(data: bytes) -> tuple[tuple[int, ...], array.array]:
+    """解析 .npy（仅支持 float32/float64，无 numpy 依赖）。"""
+    if len(data) < 10 or data[:6] != b"\x93NUMPY":
+        raise RuntimeError("无效的 .npy 文件")
 
-    w = np.asarray(weights, dtype=np.float64)
+    major = data[6]
+    if major == 1:
+        header_len = struct.unpack("<H", data[8:10])[0]
+        header_start = 10
+    elif major == 2:
+        header_len = struct.unpack("<I", data[8:12])[0]
+        header_start = 12
+    else:
+        raise RuntimeError(f"不支持的 .npy 版本: {major}")
+
+    header = ast.literal_eval(data[header_start : header_start + header_len].decode("latin1").strip())
+    shape = tuple(int(x) for x in header["shape"])
+    descr = header["descr"]
+    offset = header_start + header_len
+    if major == 1:
+        rem = offset % 16
+        if rem:
+            offset += 16 - rem
+
+    if descr == "<f4":
+        arr = array.array("f")
+        arr.frombytes(data[offset:])
+    elif descr == "<f8":
+        arr = array.array("d")
+        arr.frombytes(data[offset:])
+    else:
+        raise RuntimeError(f"不支持的 .npy dtype: {descr!r}")
+
+    expected = 1
+    for dim in shape:
+        expected *= dim
+    if len(arr) != expected:
+        raise RuntimeError(f".npy 元素数 ({len(arr)}) 与 shape {shape} 不一致")
+    return shape, arr
+
+
+def _load_weights_npz(weights_path: Path) -> tuple[int, int, array.array]:
+    """从 .npz 读取 weights 数组（Blender 自带 Python 通常无 numpy）。"""
+    with zipfile.ZipFile(weights_path) as zf:
+        npy_name = next((n for n in zf.namelist() if n.endswith("weights.npy")), None)
+        if npy_name is None:
+            raise RuntimeError(f"npz 中未找到 weights.npy: {weights_path}")
+        shape, arr = _load_npy_array(zf.read(npy_name))
+
+    if len(shape) != 2:
+        raise RuntimeError(f"weights 应为二维数组，实际 shape={shape}")
+    rows, cols = shape
+    return rows, cols, arr
+
+
+def _assign_vertex_groups(
+    mesh_obj: bpy.types.Object,
+    joint_names: list[str],
+    rows: int,
+    cols: int,
+    flat_weights: array.array,
+) -> None:
     vert_count = len(mesh_obj.data.vertices)
-    if w.shape[0] != vert_count:
-        raise RuntimeError(
-            f"权重顶点数 ({w.shape[0]}) 与 OBJ 网格 ({vert_count}) 不一致"
-        )
+    if rows != vert_count:
+        raise RuntimeError(f"权重顶点数 ({rows}) 与 OBJ 网格 ({vert_count}) 不一致")
 
     for name in joint_names:
         if name not in mesh_obj.vertex_groups:
             mesh_obj.vertex_groups.new(name=name)
 
-    for vi in range(w.shape[0]):
-        row = w[vi]
-        nz = np.where(row > 1e-4)[0]
-        if len(nz) == 0:
+    for vi in range(rows):
+        base = vi * cols
+        nz: list[tuple[int, float]] = []
+        for ji in range(cols):
+            val = float(flat_weights[base + ji])
+            if val > 1e-4:
+                nz.append((ji, val))
+        if not nz:
             continue
-        vals = row[nz]
-        total = float(vals.sum())
+        total = sum(v for _, v in nz)
         if total <= 0:
             continue
-        for ji, val in zip(nz, vals):
-            mesh_obj.vertex_groups[joint_names[int(ji)]].add([vi], float(val / total), "ADD")
+        for ji, val in nz:
+            mesh_obj.vertex_groups[joint_names[ji]].add([vi], val / total, "ADD")
 
 
 def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
@@ -174,8 +237,6 @@ def _export_fbx(fbx_path: Path) -> None:
 def main() -> None:
     obj_path, skel_path, weights_path, fbx_path = _parse_args()
 
-    import numpy as np
-
     skel = json.loads(skel_path.read_text(encoding="utf-8"))
     joint_names: list[str] = skel["joint_names"]
     parents: list[int] = skel["parents"]
@@ -185,14 +246,14 @@ def main() -> None:
             "skeleton.json 缺少 joint_rest_positions（version<2 的旧任务需重新导出蒙皮网格）"
         )
 
-    weights = np.load(weights_path)["weights"]
+    rows, cols, flat_weights = _load_weights_npz(weights_path)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _ensure_fbx_exporter()
 
     mesh_obj = _import_obj(obj_path)
     arm_obj = _create_armature(joint_names, parents, joints)
-    _assign_vertex_groups(mesh_obj, joint_names, weights)
+    _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
     _parent_mesh(mesh_obj, arm_obj)
     _export_fbx(fbx_path)
     print(f"[HRM] FBX exported: {fbx_path}")
