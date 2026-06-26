@@ -66,6 +66,13 @@ def export_skinned_fbx(
             logger.error("FBX 导出缺少输入文件: %s", path)
             return False
 
+    try:
+        from services.mesh_export_service import ensure_skeleton_rest_positions
+
+        ensure_skeleton_rest_positions(obj_path, skel_path, weights_path)
+    except Exception as exc:
+        logger.warning("补全 skeleton.json 失败，将依赖 Blender 脚本回退: %s", exc)
+
     fbx_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         blender,

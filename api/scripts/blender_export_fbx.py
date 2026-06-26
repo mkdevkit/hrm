@@ -205,6 +205,57 @@ def _assign_vertex_groups(
             mesh_obj.vertex_groups[joint_names[ji]].add([vi], val / total, "ADD")
 
 
+def _mesh_vertex_coords(mesh_obj: bpy.types.Object) -> list[tuple[float, float, float]]:
+    return [(v.co.x, v.co.y, v.co.z) for v in mesh_obj.data.vertices]
+
+
+def _estimate_joint_rest_positions(
+    verts: list[tuple[float, float, float]],
+    joint_count: int,
+    rows: int,
+    cols: int,
+    flat_weights: array.array,
+) -> list[list[float]]:
+    """旧 skeleton.json 无 joint_rest_positions 时，用 LBS 权重对顶点加权估计。"""
+    joints = [[0.0, 0.0, 0.0] for _ in range(joint_count)]
+    for ji in range(min(joint_count, cols)):
+        sx = sy = sz = 0.0
+        total = 0.0
+        for vi in range(rows):
+            w = float(flat_weights[vi * cols + ji])
+            if w <= 1e-6:
+                continue
+            vx, vy, vz = verts[vi]
+            sx += vx * w
+            sy += vy * w
+            sz += vz * w
+            total += w
+        if total > 1e-6:
+            joints[ji] = [sx / total, sy / total, sz / total]
+    return joints
+
+
+def _resolve_joint_rest_positions(
+    skel: dict,
+    joint_names: list[str],
+    mesh_obj: bpy.types.Object,
+    rows: int,
+    cols: int,
+    flat_weights: array.array,
+) -> list[list[float]]:
+    joints: list[list[float]] = skel.get("joint_rest_positions") or []
+    if len(joints) == len(joint_names):
+        return joints
+
+    print(
+        "[HRM] skeleton.json 无 joint_rest_positions，"
+        "从 OBJ 顶点 + LBS 权重估算关节位置",
+        file=sys.stderr,
+    )
+    verts = _mesh_vertex_coords(mesh_obj)
+    return _estimate_joint_rest_positions(verts, len(joint_names), rows, cols, flat_weights)
+
+
 def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
     for mod in list(mesh_obj.modifiers):
         if mod.type == "ARMATURE":
@@ -240,18 +291,15 @@ def main() -> None:
     skel = json.loads(skel_path.read_text(encoding="utf-8"))
     joint_names: list[str] = skel["joint_names"]
     parents: list[int] = skel["parents"]
-    joints: list[list[float]] = skel.get("joint_rest_positions") or []
-    if len(joints) != len(joint_names):
-        raise RuntimeError(
-            "skeleton.json 缺少 joint_rest_positions（version<2 的旧任务需重新导出蒙皮网格）"
-        )
-
     rows, cols, flat_weights = _load_weights_npz(weights_path)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _ensure_fbx_exporter()
 
     mesh_obj = _import_obj(obj_path)
+    joints = _resolve_joint_rest_positions(
+        skel, joint_names, mesh_obj, rows, cols, flat_weights
+    )
     arm_obj = _create_armature(joint_names, parents, joints)
     _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
     _parent_mesh(mesh_obj, arm_obj)

@@ -5377,9 +5377,7 @@ _**Agent (default)**_
 
 <tool-use data-tool-type="write" data-tool-name="edit_file_v2">
 
-<details><summary>Tool use: **edit_file_v2**</summary>
-
-Status: **loading**
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\routers\avatars.py</summary>
 
 </details>
 
@@ -5389,3 +5387,310 @@ Status: **loading**
 <summary>Tool use: **edit_file_v2**</summary>
 
 </details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\.env.example</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在检查语法并查看 lint 信息。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\main.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py" "D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py" "D:\WorkSpace\mkdevkit\hrm\api\routers\avatars.py"</summary>
+
+```bash
+python -m py_compile "D:\WorkSpace\mkdevkit\hrm\api\main.py" "D:\WorkSpace\mkdevkit\hrm\api\config.py" "D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py" "D:\WorkSpace\mkdevkit\hrm\api\routers\avatars.py"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\main.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhmpp_service.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\config.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\main.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhmpp_service.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\config.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+已实现：**启动时按配置预加载 LHM++ 模型**，加载成功后输出日志。
+
+### 配置项
+
+在 `api/.env` 中新增：
+
+```env
+PRELOAD_MODEL=true   # 默认 true；设为 false 则恢复为首次 animate 请求时再加载
+```
+
+### 行为说明
+
+| 条件 | 行为 |
+|------|------|
+| `PRELOAD_MODEL=true` 且非 mock、LHM_ROOT 可用 | 启动时在 `lifespan` 中加载模型 |
+| `MOCK_MODE=true` | 跳过预加载 |
+| `LHM_ROOT` 不可用 | 跳过并打 warning |
+| `PRELOAD_MODEL=false` | 与之前一致，首次动作驱动时再加载 |
+
+**3D 重建**仍走独立加载路径（避免与预加载模型争用显存 OOM），不受此配置影响。
+
+### 启动日志示例
+
+```
+INFO [hrm.config] 已加载 api/.env | LHM_ROOT=/root/LHM-plusplus MOCK=False PRELOAD_MODEL=True ...
+INFO [services.lhmpp_service] 正在加载 LHM++ 模型 (model=LHMPP-700M-PixelShuffle)...
+INFO [services.lhmpp_service] LHM++ 模型加载完成 | model=LHMPP-700M-PixelShuffle path=... pose_estimator=on device=cuda
+```
+
+### 健康检查
+
+`GET /api/v1/health` 新增字段：
+
+- `preload_model`：是否启用启动预加载
+- `model_loaded`：模型是否已就绪
+
+重启 API 后即可生效。若 `.env` 里仍是 `MOCK_MODE=true`，需改为 `false` 并配置好 `LHM_ROOT` 才会真正加载模型。
+
+---
+
+_**User**_
+
+Blender 4.0.2
+[HRM] FBX export failed: skeleton.json 缺少 joint_rest_positions（version<2 的旧任务需重新导出蒙皮网格）
+Traceback (most recent call last):
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 264, in <module>
+    main()
+  File "/root/hrm/api/scripts/blender_export_fbx.py", line 245, in main
+    raise RuntimeError(
+RuntimeError: skeleton.json 缺少 joint_rest_positions（version<2 的旧任务需重新导出蒙皮网格）
+
+---
+
+_**Agent (default)**_
+
+排查 `skeleton.json` 的生成逻辑，以及 `joint_rest_positions` 缺失时的处理方式。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "joint_rest_positions|skeleton\\.json|avatar_skeleton"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api",
+  "pattern": "joint_rest_positions|skeleton\\.json|avatar_skeleton",
+  "topFiles": [
+    {
+      "matchCount": 4,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 4,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    },
+    {
+      "matchCount": 4,
+      "uri": "api/scripts/blender_export_fbx.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api/routers/avatars.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "api\\routers\\avatars.py"
+    }
+  ],
+  "totalFiles": 5,
+  "totalMatches": 14
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+当前版本的代码始终会写入 joint_rest_positions。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "\"version\":\\s*1|format.*SMPL-X"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm",
+  "pattern": "\"version\":\\s*1|format.*SMPL-X",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "api/services/mesh_export_service.py"
+    },
+    {
+      "matchCount": 19,
+      "uri": ".specstory/history/2026-05-29_07-51-38Z-3d-model-generation-and-motion-capture-tool.md"
+    },
+    {
+      "matchCount": 4,
+      "uri": ".specstory/history/2026-05-29_18-04-55Z-3d-model-generation-and-motion-capture-tools.md"
+    }
+  ],
+  "totalFiles": 3,
+  "totalMatches": 24
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\blender_fbx_export.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+旧任务的 skeleton.json 缺少 joint_rest_positions 字段。
+
+计划在 blender_export_fbx.py 中添加回退逻辑。若 skeleton.json 缺少 joint_rest_positions，将从 OBJ 顶点和权重推算关节位置，并记录警告。</details></think>

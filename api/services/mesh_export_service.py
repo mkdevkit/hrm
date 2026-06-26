@@ -192,6 +192,48 @@ def _estimate_joint_positions(
     return joints
 
 
+def _read_obj_vertices(obj_path: Path) -> np.ndarray:
+    """读取 Wavefront OBJ 顶点坐标（v x y z）。"""
+    verts: list[list[float]] = []
+    for line in obj_path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("v "):
+            continue
+        parts = line.split()
+        if len(parts) >= 4:
+            verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    if not verts:
+        raise ValueError(f"OBJ 无顶点: {obj_path}")
+    return np.asarray(verts, dtype=np.float32)
+
+
+def ensure_skeleton_rest_positions(
+    obj_path: Path,
+    skel_path: Path,
+    weights_path: Path,
+) -> bool:
+    """旧版 skeleton.json 缺 joint_rest_positions 时，从 OBJ + LBS 权重补全并写回。"""
+    skel = json.loads(skel_path.read_text(encoding="utf-8"))
+    joint_names: list[str] = skel.get("joint_names") or []
+    joints = skel.get("joint_rest_positions") or []
+    if joint_names and len(joints) == len(joint_names):
+        return False
+
+    if not joint_names:
+        raise ValueError(f"skeleton.json 缺少 joint_names: {skel_path}")
+
+    verts = _read_obj_vertices(obj_path)
+    weights = np.load(weights_path)["weights"]
+    joint_positions = _estimate_joint_positions(verts, weights, len(joint_names))
+    skel["joint_rest_positions"] = joint_positions.tolist()
+    skel["version"] = max(int(skel.get("version") or 1), 2)
+    skel_path.write_text(json.dumps(skel, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info(
+        "已补全 skeleton.json 的 joint_rest_positions（%d 关节，来源 OBJ+LBS 权重）",
+        len(joint_names),
+    )
+    return True
+
+
 def _read_ply_xyz(ply_path: Path) -> np.ndarray:
     """读取 PLY 顶点坐标（dense_sample prior 与 3DGS 导出共用）。"""
     return read_gaussian_ply_xyz(ply_path)
