@@ -399,7 +399,7 @@ def apply_gaussian_displacement(
     gaussian_xyz: np.ndarray,
     anchor_xyz: np.ndarray,
     *,
-    k_neighbors: int = 8,
+    k_neighbors: int | None = None,
 ) -> np.ndarray:
     """将高斯相对锚点的位移场映射到 SMPL-X 网格顶点。"""
     from scipy.spatial import cKDTree
@@ -412,6 +412,10 @@ def apply_gaussian_displacement(
             "并重新导出蒙皮网格。"
         )
 
+    mode = (settings.fbx_displacement_mode or "max").strip().lower()
+    k = k_neighbors if k_neighbors is not None else max(1, settings.fbx_displacement_k)
+    sharpness = max(1.0, settings.fbx_displacement_sharpness)
+
     displacement = gaussian_xyz - anchor_xyz
     per_gaussian_cap = settings.fbx_max_displacement
     if per_gaussian_cap > 0:
@@ -423,15 +427,31 @@ def apply_gaussian_displacement(
         )
 
     tree = cKDTree(anchor_xyz)
-    k = min(k_neighbors, len(anchor_xyz))
+    k = min(k, len(anchor_xyz))
     dists, indices = tree.query(mesh_verts, k=k)
     if k == 1:
         dists = dists[:, None]
         indices = indices[:, None]
 
-    weights = 1.0 / (dists + 1e-6)
-    weights /= weights.sum(axis=1, keepdims=True)
-    vert_disp = (displacement[indices] * weights[..., None]).sum(axis=1)
+    if mode == "max":
+        disp_neighbors = displacement[indices]
+        best = np.argmax(np.linalg.norm(disp_neighbors, axis=2), axis=1)
+        vert_disp = disp_neighbors[np.arange(len(mesh_verts)), best]
+    else:
+        if mode == "sharp":
+            weights = 1.0 / (np.power(dists, sharpness) + 1e-8)
+        else:
+            weights = 1.0 / (dists + 1e-6)
+        weights /= weights.sum(axis=1, keepdims=True)
+        vert_disp = (displacement[indices] * weights[..., None]).sum(axis=1)
+
+    logger.info(
+        "高斯位移映射: mode=%s k=%d blend=%.2f cap=%s",
+        mode,
+        k,
+        settings.fbx_displacement_blend,
+        per_gaussian_cap if per_gaussian_cap > 0 else "none",
+    )
     return mesh_verts + vert_disp * settings.fbx_displacement_blend
 
 

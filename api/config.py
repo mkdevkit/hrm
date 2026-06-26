@@ -46,8 +46,12 @@ class Settings(BaseSettings):
     # 高斯→UV splat 半径（像素）；略大更平滑，略小更锐
     fbx_texture_splat_radius: float = 2.0
     # 高斯→SMPL-X 位移：过小会导致网格与 3DGS 对不齐
-    fbx_max_displacement: float = 0.5
+    fbx_max_displacement: float = 0.0  # 0=不裁剪单点位移（鞋/衣等需大位移）
     fbx_displacement_blend: float = 1.0
+    # mean=平滑(易显瘦) | sharp=锐化插值 | max=取邻域最大位移(保鞋/体积)
+    fbx_displacement_mode: str = "max"
+    fbx_displacement_k: int = 4
+    fbx_displacement_sharpness: float = 4.0
     # 可选：SMPL-X 官方 smplx_uv.obj（human_model_files 无 UV 时手动指定）
     smplx_uv_obj: str = ""
 

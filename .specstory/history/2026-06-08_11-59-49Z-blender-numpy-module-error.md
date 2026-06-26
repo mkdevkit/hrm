@@ -27751,8 +27751,18 @@ _**User**_
 
 _**Agent (default)**_
 
+<think><details><summary>Thought Process</summary>
+颜色再次消失。可能是纹理烘焙失败、FBX导出时丢失了纹理，或者3D查看器没有正确显示纹理。</details></think>
+
+_**Agent (default)**_
+
+颜色又没了，正在排查贴图烘焙与 FBX 导出链路。
+
+
+_**Agent (default)**_
+
 <tool-use data-tool-type="read" data-tool-name="read_file_v2">
-<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
 
 </details>
 </tool-use>
@@ -27765,7 +27775,7 @@ _**Agent (default)**_
 _**Agent (default)**_
 
 <tool-use data-tool-type="read" data-tool-name="read_file_v2">
-<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
 
 </details>
 </tool-use>
@@ -27781,7 +27791,35 @@ _**Agent (default)**_
 <details>
 <summary>Tool use: **ripgrep_raw_search**</summary>
 
-Status: **loading**
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py",
+  "pattern": "texture|Emission|tex_arg"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\scripts\\blender_export_fbx.py",
+  "pattern": "texture|Emission|tex_arg",
+  "topFiles": [
+    {
+      "matchCount": 14,
+      "uri": "api\\scripts\\blender_export_fbx.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 14
+}
+```
+Status: **completed**
 
 
 </details>
@@ -27791,3 +27829,431 @@ Status: **loading**
 <summary>Tool use: **ripgrep_raw_search**</summary>
 
 </details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在排查颜色消失的潜在原因。
+
+重点怀疑两个函数：`_refine_baked_texture` 的权重掩码为空或全零时纹理会变黑；`gaussian_splat_colors_to_texture` 的 UV 采样错误可能导致着色点位置偏移。锚点烘焙参数传递正确，已排除该处问题。
+
+发现关键问题：锚点位于中性表面，但 UV 采样使用了位移后的顶点。锚点坐标与 UV 查找对象不匹配，导致着色点位置偏移，颜色丢失。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\main.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+怀疑是 FBX 导出时 Emission 着色器未正确转换为 diffuse 贴图。Three.js 的 FBXLoader 可能无法将 emission 作为 diffuse map 加载。
+
+怀疑切换到纯 Emission 后 FBX 未正确嵌入纹理，导致 Three.js 加载时无贴图，回退到灰色或默认材质。准备检查 viewer.ts 中的增强逻辑并修复。
+
+改回 Blender 中使用 Principled BSDF 并将 Base Color 连接纹理，确保 FBX 标准 diffuse 贴图正确嵌入。Viewer 保持无光照显示。同时修复 bake 的 UV 映射，改用 canonical mesh_verts。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers",
+  "pattern": "diffuse|texture|mesh"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers",
+  "pattern": "diffuse|texture|mesh",
+  "topFiles": [
+    {
+      "matchCount": 8,
+      "uri": "api\\routers\\avatars.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 8
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在排查颜色再次消失的根因。
+
+已定位根因：Blender 导出为 Emission-only 模式，FBX 不嵌入发射纹理，导致 FBXLoader 无法读取贴图，最终回退到错误的 createSkinMaterial() 生成无色材质。
+
+修复方案：
+- 将 Blender 材质改为 Principled BSDF 并链接 Base Color 纹理，使 FBX 正确嵌入 diffuse 数据
+- 复制纹理文件到 FBX 同目录并保持名称一致
+- 为 3dviewer 增加从 API 获取纹理的接口，支持通过 URL 加载 HRM 模型时自动获取贴图</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\routers\avatars.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+准备回退到 Blender 的 Principled BSDF 与 Base Color 纹理方案，以确保 FBX 导出兼容。</details></think>
+
+_**Agent (default)**_
+
+Emission 材质导出到 FBX 时贴图常丢失，导致查看器无颜色。正在改回 Principled 导出，并增加独立贴图 API 与 3dviewer 回退加载。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\scripts\blender_export_fbx.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\routers\avatars.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\viewer.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\main.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\3dviewer\src\main.ts</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在排查颜色丢失问题。setModel 中外部纹理应用时，enhanceMeshAppearance 可能覆盖了颜色设置。需要调整执行顺序。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\main.ts",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers\\avatars.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\viewer.ts"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\3dviewer\\src\\main.ts"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\routers\\avatars.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**原因**：之前为去掉光照改成了 Blender **Emission 材质**，但 FBX 标准几乎只认 **Principled 的 Base Color**；Three.js 读 FBX 时拿不到贴图，3dviewer 就回退成肤色/灰色，看起来像「颜色没了」。
+
+## 已修复
+
+1. **Blender**：改回 `Principled BSDF` + Base Color 贴图（Roughness=1，无高光）
+2. **API**：新增 `GET /api/v1/avatars/{id}/mesh/texture` 返回 `avatar_diffuse.png`
+3. **3dviewer**：HRM 链接（`?avatar=...`）若 FBX 无内嵌贴图，**自动拉取**上述 diffuse 并无光照显示
+4. **烘焙**：锚点 UV 用 **位移前** 的 canonical 网格，避免贴图错位/发黑
+
+## 请按顺序操作
+
+```bash
+# 1. 确认贴图文件存在
+ls data/avatars/<id>/output/avatar_diffuse.png
+
+# 2. 重导出 FBX（会用 Principled 贴图）
+python scripts/rebake_avatar_fbx.py data/avatars/<id>/output
+
+# 3. 确认 PNG 非空、日志无「烘焙失败」
+```
+
+**3dviewer** 需更新代码后刷新；用 HRM 链接打开时会自动请求 `/mesh/texture`。
+
+## 快速自检
+
+```bash
+curl -I http://localhost:8000/api/v1/avatars/<id>/mesh/texture
+# 应 200
+
+ls -la output/avatar_diffuse.png   # 文件应 > 几 KB
+```
+
+若 `avatar_diffuse.png` 不存在或日志仍有 `3DGS UV 贴图烘焙失败`，把那段 traceback 发过来。若 PNG 有、FBX 仍无色，更新 3dviewer 后应能通过 `/mesh/texture` 自动补上。
+
+---
+
+_**User**_
+
+感觉生成的模型小了一圈，比如四肢细了，脚上的鞋有脚肢。
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+用户反馈生成的模型尺寸偏小。四肢显得过细，脚部还出现了脚肢。</details></think>
