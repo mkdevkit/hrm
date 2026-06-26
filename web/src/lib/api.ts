@@ -98,6 +98,22 @@ export function skinnedMeshUrl(avatarId: string, format: "fbx" | "obj" = "fbx") 
   return `${API_BASE}/api/v1/avatars/${avatarId}/mesh?format=${format}`;
 }
 
+const VIEWER_3D_BASE =
+  process.env.NEXT_PUBLIC_3D_VIEWER_URL || "http://localhost:5175";
+
+/** 打开 3dviewer 预览蒙皮网格（FBX / OBJ） */
+export function meshViewerUrl(
+  avatarId: string,
+  format: "fbx" | "obj" = "fbx",
+) {
+  const params = new URLSearchParams({
+    avatar: avatarId,
+    format,
+  });
+  if (API_BASE) params.set("api", API_BASE);
+  return `${VIEWER_3D_BASE}/?${params.toString()}`;
+}
+
 export function skeletonUrl(avatarId: string) {
   return `${API_BASE}/api/v1/avatars/${avatarId}/skeleton`;
 }

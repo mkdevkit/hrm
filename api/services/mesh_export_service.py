@@ -324,12 +324,30 @@ def apply_gaussian_displacement(
     return mesh_verts + vert_disp * blend_strength
 
 
-def _write_obj(path: Path, verts: np.ndarray, faces: np.ndarray) -> None:
-    lines = []
+def _write_obj(
+    path: Path,
+    verts: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray | None = None,
+    uv_faces: np.ndarray | None = None,
+) -> None:
+    lines: list[str] = []
     for v in verts:
         lines.append(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}")
-    for f in faces:
-        lines.append(f"f {f[0]+1} {f[1]+1} {f[2]+1}")
+    if uvs is not None:
+        for uv in uvs:
+            lines.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
+        use_faces = uv_faces if uv_faces is not None else faces
+        for f, uf in zip(faces, use_faces):
+            if len(uf) == 3 and np.array_equal(f, uf):
+                lines.append(f"f {f[0]+1}/{f[0]+1} {f[1]+1}/{f[1]+1} {f[2]+1}/{f[2]+1}")
+            else:
+                lines.append(
+                    f"f {f[0]+1}/{uf[0]+1} {f[1]+1}/{uf[1]+1} {f[2]+1}/{uf[2]+1}"
+                )
+    else:
+        for f in faces:
+            lines.append(f"f {f[0]+1} {f[1]+1} {f[2]+1}")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -393,16 +411,38 @@ def _mock_skinned_export(output_dir: Path) -> dict[str, Any]:
     fbx_path = output_dir / "avatar_skinned.fbx"
     weights_path = output_dir / "avatar_lbs_weights.npz"
 
+    texture_path = output_dir / "avatar_diffuse.png"
+    try:
+        from PIL import Image as PILImage
+
+        grad = np.linspace(0.55, 0.85, 256, dtype=np.uint8)
+        tile = np.stack(np.meshgrid(grad, grad, indexing="xy"), axis=-1)
+        rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+        rgb[..., 0] = tile[..., 0]
+        rgb[..., 1] = tile[..., 1] * 0.85
+        rgb[..., 2] = tile[..., 1] * 0.7
+        PILImage.fromarray(rgb, mode="RGB").save(texture_path)
+    except Exception:
+        texture_path = None
+
     _write_obj(obj_path, verts, faces)
     _write_skeleton_json(
         skel_path, SMPLX_JOINT_NAMES, SMPLX_PARENTS, [0.0] * 10, weights, joint_positions
     )
     np.savez_compressed(weights_path, weights=weights, faces=faces)
-    fbx_ok = export_skinned_fbx(obj_path, skel_path, weights_path, fbx_path)
+    fbx_ok = export_skinned_fbx(
+        obj_path,
+        skel_path,
+        weights_path,
+        fbx_path,
+        texture_path=texture_path if texture_path and texture_path.is_file() else None,
+        subdivision_levels=1,
+    )
 
     return {
         "mesh_obj_path": str(obj_path),
         "mesh_fbx_path": str(fbx_path) if fbx_ok else None,
+        "mesh_texture_path": str(texture_path) if texture_path and texture_path.is_file() else None,
         "skeleton_json_path": str(skel_path),
         "lbs_weights_path": str(weights_path),
         "joint_count": 55,
@@ -445,8 +485,31 @@ def export_skinned_mesh_from_gaussian(
     skel_path = output_dir / "avatar_skeleton.json"
     fbx_path = output_dir / "avatar_skinned.fbx"
     weights_path = output_dir / "avatar_lbs_weights.npz"
+    texture_path: Path | None = output_dir / "avatar_diffuse.png"
+    uvs: np.ndarray | None = None
+    uv_faces: np.ndarray | None = None
+    if settings.fbx_bake_texture:
+        try:
+            from services.texture_bake_service import bake_diffuse_from_gaussian_ply, load_smplx_uv
 
-    _write_obj(obj_path, displaced_verts, faces)
+            uvs, uv_faces = load_smplx_uv(root, faces)
+            bake_diffuse_from_gaussian_ply(
+                ply_path,
+                displaced_verts,
+                faces,
+                root,
+                texture_path,
+                texture_size=settings.fbx_texture_size,
+            )
+        except Exception as exc:
+            logger.warning("3DGS UV 贴图烘焙失败，FBX 将无贴图: %s", exc)
+            texture_path = None
+            uvs = None
+            uv_faces = None
+    else:
+        texture_path = None
+
+    _write_obj(obj_path, displaced_verts, faces, uvs=uvs, uv_faces=uv_faces)
     _write_skeleton_json(
         skel_path,
         joint_names,
@@ -456,14 +519,25 @@ def export_skinned_mesh_from_gaussian(
         joint_positions,
     )
     np.savez_compressed(weights_path, weights=lbs_weights, faces=faces)
-    fbx_ok = export_skinned_fbx(obj_path, skel_path, weights_path, fbx_path)
+    tex_for_fbx = texture_path if texture_path and texture_path.is_file() else None
+    fbx_ok = export_skinned_fbx(
+        obj_path,
+        skel_path,
+        weights_path,
+        fbx_path,
+        texture_path=tex_for_fbx,
+        subdivision_levels=settings.fbx_subdivision_levels,
+    )
 
     return {
         "mesh_obj_path": str(obj_path),
         "mesh_fbx_path": str(fbx_path) if fbx_ok else None,
+        "mesh_texture_path": str(tex_for_fbx) if tex_for_fbx else None,
         "skeleton_json_path": str(skel_path),
         "lbs_weights_path": str(weights_path),
         "joint_count": len(joint_names),
         "vertex_count": int(len(displaced_verts)),
+        "fbx_subdivision_levels": settings.fbx_subdivision_levels,
+        "fbx_texture_baked": bool(tex_for_fbx),
         "mock": False,
     }

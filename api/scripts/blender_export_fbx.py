@@ -2,7 +2,7 @@
 
 用法:
   blender --background --python blender_export_fbx.py -- \\
-    <mesh.obj> <skeleton.json> <lbs_weights.npz> <output.fbx>
+    <mesh.obj> <skeleton.json> <lbs_weights.npz> <output.fbx> [diffuse.png|-] [subdiv_levels]
 """
 
 from __future__ import annotations
@@ -72,14 +72,21 @@ def _ensure_numpy() -> None:
         ) from exc
 
 
-def _parse_args() -> tuple[Path, Path, Path, Path]:
+def _parse_args() -> tuple[Path, Path, Path, Path, Path | None, int]:
     argv = sys.argv
     if "--" not in argv:
         raise SystemExit("用法: blender --background --python blender_export_fbx.py -- <args>")
     args = argv[argv.index("--") + 1 :]
-    if len(args) != 4:
-        raise SystemExit("需要 4 个参数: obj skeleton.json weights.npz output.fbx")
-    return Path(args[0]), Path(args[1]), Path(args[2]), Path(args[3])
+    if len(args) < 4:
+        raise SystemExit(
+            "至少需要 4 个参数: obj skeleton.json weights.npz output.fbx "
+            "[diffuse.png|-] [subdiv_levels]"
+        )
+    texture_path: Path | None = None
+    if len(args) > 4 and args[4] not in ("", "-"):
+        texture_path = Path(args[4])
+    subdiv = int(args[5]) if len(args) > 5 else 0
+    return Path(args[0]), Path(args[1]), Path(args[2]), Path(args[3]), texture_path, subdiv
 
 
 def _ensure_fbx_exporter() -> None:
@@ -319,7 +326,63 @@ def _parent_mesh(mesh_obj: bpy.types.Object, arm_obj: bpy.types.Object) -> None:
     mesh_obj.parent_type = "OBJECT"
 
 
-def _export_fbx(fbx_path: Path) -> None:
+def _apply_subdivision(mesh_obj: bpy.types.Object, levels: int) -> None:
+    if levels <= 0:
+        return
+    bpy.context.view_layer.objects.active = mesh_obj
+    mesh_obj.select_set(True)
+    mod = mesh_obj.modifiers.new(name="Subsurf", type="SUBSURF")
+    mod.levels = levels
+    mod.render_levels = levels
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    mesh_obj.select_set(False)
+    print(f"[HRM] 细分曲面 Level {levels} 已应用", file=sys.stderr)
+
+
+def _prepare_mesh_for_export(mesh_obj: bpy.types.Object, texture_path: Path | None) -> None:
+    """平滑着色 + 贴图或默认肤色材质。"""
+    import math
+
+    mesh = mesh_obj.data
+    for poly in mesh.polygons:
+        poly.use_smooth = True
+    if hasattr(mesh, "use_auto_smooth"):
+        mesh.use_auto_smooth = True
+    if hasattr(mesh, "auto_smooth_angle"):
+        mesh.auto_smooth_angle = math.radians(180)
+    mesh.update()
+
+    mat = bpy.data.materials.new(name="HRM_Body")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    if bsdf is None:
+        mesh.materials.clear()
+        mesh.materials.append(mat)
+        return
+
+    if texture_path and texture_path.is_file():
+        img = bpy.data.images.load(str(texture_path.resolve()))
+        tex_node = nodes.new("ShaderNodeTexImage")
+        tex_node.image = img
+        tex_node.location = (-300, 300)
+        links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
+        bsdf.inputs["Roughness"].default_value = 0.55
+        print(f"[HRM] 已绑定 diffuse 贴图: {texture_path.name}", file=sys.stderr)
+    else:
+        bsdf.inputs["Base Color"].default_value = (0.82, 0.68, 0.58, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.52
+        for key in ("Subsurface Weight", "Subsurface"):
+            if key in bsdf.inputs:
+                bsdf.inputs[key].default_value = 0.12
+                break
+
+    mesh.materials.clear()
+    mesh.materials.append(mat)
+
+
+def _export_fbx(fbx_path: Path, *, embed_textures: bool) -> None:
     _ensure_numpy()
     _ensure_fbx_exporter()
     fbx_path = fbx_path.resolve()
@@ -331,7 +394,9 @@ def _export_fbx(fbx_path: Path) -> None:
         add_leaf_bones=False,
         bake_anim=False,
         armature_nodetype="NULL",
-        mesh_smooth_type="FACE",
+        mesh_smooth_type="Normals",
+        path_mode="COPY",
+        embed_textures=embed_textures,
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"export_scene.fbx 返回 {result!r}")
@@ -340,7 +405,7 @@ def _export_fbx(fbx_path: Path) -> None:
 
 
 def main() -> None:
-    obj_path, skel_path, weights_path, fbx_path = _parse_args()
+    obj_path, skel_path, weights_path, fbx_path, texture_path, subdiv = _parse_args()
 
     skel = json.loads(skel_path.read_text(encoding="utf-8"))
     joint_names: list[str] = skel["joint_names"]
@@ -357,7 +422,9 @@ def main() -> None:
     arm_obj = _create_armature(joint_names, parents, joints)
     _assign_vertex_groups(mesh_obj, joint_names, rows, cols, flat_weights)
     _parent_mesh(mesh_obj, arm_obj)
-    _export_fbx(fbx_path)
+    _apply_subdivision(mesh_obj, subdiv)
+    _prepare_mesh_for_export(mesh_obj, texture_path)
+    _export_fbx(fbx_path, embed_textures=bool(texture_path and texture_path.is_file()))
     print(f"[HRM] FBX exported: {fbx_path}")
 
 

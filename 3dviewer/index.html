@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Model Viewer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="toolbar">
+        <h1 id="app-title">3D Model Viewer</h1>
+        <label class="btn">
+          <span id="btn-open-file-label">Open model</span>
+          <input
+            id="file-input"
+            type="file"
+            accept=".fbx,.glb,.gltf,.obj,model/fbx,model/gltf-binary,model/gltf+json"
+            hidden
+          />
+        </label>
+        <button id="btn-load-url" type="button" class="btn secondary">Load from URL</button>
+        <label id="anim-wrap" class="anim-wrap hidden">
+          <span id="anim-label">Animation</span>
+          <select id="anim-select" class="anim-select"></select>
+        </label>
+        <button id="btn-play" type="button" class="btn secondary hidden" aria-pressed="true">Pause</button>
+        <span id="status" class="status"></span>
+        <button id="btn-lang" type="button" class="btn lang-toggle" title="Switch language">中文</button>
+      </header>
+      <div id="canvas-host"></div>
+      <aside id="help" class="help">
+        <p><strong id="help-title">Usage</strong></p>
+        <ul>
+          <li id="help-formats">Supports FBX, GLB/GLTF, OBJ</li>
+          <li id="help-anim">If the model has clips, pick one from the Animation menu</li>
+          <li id="help-hrm-note">HRM FBX has no textures; viewer applies smooth skin-tone shading</li>
+          <li id="help-controls">Left drag: rotate · Right drag: pan · Wheel: zoom</li>
+        </ul>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

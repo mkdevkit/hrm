@@ -26,6 +26,7 @@
   - [任务查询](#任务查询)
 - [输出文件说明](#输出文件说明)
 - [3DGS 查看器](#3dgs-查看器)
+- [3D 模型查看器](#3d-模型查看器)
 - [蒙皮网格导出与实现原理](#蒙皮网格导出与实现原理)
 - [Mock 模式（无 GPU 联调）](#mock-模式无-gpu-联调)
 - [配置项参考](#配置项参考)
@@ -549,6 +550,28 @@ http://localhost:5174/?ply=http://localhost:8000/api/v1/avatars/{avatar_id}/mode
 
 ---
 
+## 3D 模型查看器
+
+HRM 自带 **Three.js** 模型预览工具（`3dviewer/`），用于查看蒙皮 **FBX**、GLB/GLTF、OBJ；若模型含动作片段，可在工具栏切换 **动作** 并播放/暂停。
+
+```bash
+cd 3dviewer
+npm install
+npm run dev
+```
+
+打开 **[http://localhost:5175](http://localhost:5175)**，拖放 FBX，或使用 HRM API 链接：
+
+```
+http://localhost:5175/?avatar={avatar_id}&api=http://localhost:8000&format=fbx
+```
+
+跨域加载时在 `api/.env` 增加：`CORS_ORIGINS=http://localhost:3000,http://localhost:5174,http://localhost:5175`
+
+详见 `[3dviewer/README.md](3dviewer/README.md)`。
+
+---
+
 ## 蒙皮网格导出与实现原理
 
 LHM++ **官方**仅提供 3D Gaussian Splatting PLY 导出（`scripts/inference/to_gs_ply.py`），**不提供**传统蒙皮网格或 FBX 一键导出。
@@ -882,9 +905,13 @@ hrm/
 │       └── job_manager.py        # 异步任务管理
 ├── web/                          # Next.js 前端
 │   └── ...
-└── 3dgs/                         # 3DGS PLY 浏览器查看器（Vite + gaussian-splats-3d）
+├── 3dgs/                         # 3DGS PLY 浏览器查看器（Vite + gaussian-splats-3d）
+│   ├── index.html
+│   ├── src/main.ts
+│   └── README.md
+└── 3dviewer/                     # FBX/GLB/OBJ 浏览器查看器（Vite + Three.js）
     ├── index.html
-    ├── src/main.ts
+    ├── src/viewer.ts
     └── README.md
 ```
 

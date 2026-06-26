@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # Blender headless 路径（蒙皮 FBX 导出）；空则自动在 PATH 中查找 blender
     blender_executable: str = ""
 
+    # FBX 导出：3DGS→UV 烘焙 + 细分高模
+    fbx_texture_size: int = 2048
+    fbx_subdivision_levels: int = 1  # 0=低模，1≈4×面，2≈16×面
+    fbx_bake_texture: bool = True
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = "http://localhost:3000"

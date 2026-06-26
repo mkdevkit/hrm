@@ -8,6 +8,7 @@ import {
   jobVideoUrl,
   modelUrl,
   skinnedMeshUrl,
+  meshViewerUrl,
   skeletonUrl,
   pollJob,
   previewUrl,
@@ -284,9 +285,19 @@ export default function HomePage() {
               {hasSkinnedMesh && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.75rem" }}>
                   {hasFbx && (
-                    <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "fbx")} download>
-                      下载蒙皮 FBX
-                    </a>
+                    <>
+                      <a
+                        className="btn btn-secondary"
+                        href={meshViewerUrl(avatarId, "fbx")}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        预览蒙皮 FBX
+                      </a>
+                      <a className="btn btn-secondary" href={skinnedMeshUrl(avatarId, "fbx")} download>
+                        下载蒙皮 FBX
+                      </a>
+                    </>
                   )}
                   <a className="btn btn-secondary" href={skeletonUrl(avatarId)} download>
                     下载 SMPL-X 骨骼 JSON
@@ -294,7 +305,15 @@ export default function HomePage() {
                 </div>
               )}
               <p className="hint" style={{ marginTop: "0.75rem" }}>
-                PLY 请用 <a href="https://toolpow.com/zh/tools/3dgs" target="_blank" rel="noreferrer">3DGS 查看器</a>预览；FBX 可直接导入 Unity / Maya。
+                PLY 请用{" "}
+                <a href="https://toolpow.com/zh/tools/3dgs" target="_blank" rel="noreferrer">
+                  3DGS 查看器
+                </a>
+                预览；FBX 可用{" "}
+                <a href="http://localhost:5175" target="_blank" rel="noreferrer">
+                  3D 模型查看器
+                </a>
+                预览（含 3DGS 烘焙贴图 + 细分高模），或导入 Unity / Maya。
                 {hasSkinnedMesh && !hasFbx && " FBX 未生成，请确认 API 服务器已安装 Blender。"}
               </p>
             </div>
