@@ -521,17 +521,19 @@ def bake_gaussian_colors_via_anchors(
     uvs: np.ndarray,
     uv_faces: np.ndarray,
     *,
+    uv_reference_verts: np.ndarray | None = None,
     size: int = 2048,
     splat_radius: float = 2.0,
 ) -> np.ndarray:
     """每个 3DGS 高斯按锚点 UV splat，细节优于仅 1 万顶点插值。"""
+    ref_verts = uv_reference_verts if uv_reference_verts is not None else mesh_verts
     logger.info(
         "逐高斯 UV splat: %d 点, %dpx, 半径 %.1fpx",
         len(gaussian_rgb),
         size,
         splat_radius,
     )
-    sampled_uv = sample_uv_at_mesh_points(mesh_verts, faces, uvs, uv_faces, anchor_xyz)
+    sampled_uv = sample_uv_at_mesh_points(ref_verts, faces, uvs, uv_faces, anchor_xyz)
     tex, weight = gaussian_splat_colors_to_texture(
         sampled_uv,
         gaussian_rgb,
@@ -642,6 +644,7 @@ def bake_diffuse_from_gaussian_ply(
     uv_faces: np.ndarray | None = None,
     anchor_xyz: np.ndarray | None = None,
     splat_radius: float | None = None,
+    uv_reference_verts: np.ndarray | None = None,
 ) -> Path:
     """3DGS PLY → SMPL-X UV diffuse 贴图。"""
     from config import settings
@@ -667,6 +670,7 @@ def bake_diffuse_from_gaussian_ply(
             faces,
             uvs,
             uv_faces,
+            uv_reference_verts=uv_reference_verts,
             size=texture_size,
             splat_radius=splat_radius,
         )
@@ -677,5 +681,7 @@ def bake_diffuse_from_gaussian_ply(
             uvs, uv_faces, vert_colors, geom_faces=faces, size=texture_size
         )
     save_texture_png(texture, output_png)
+    if float(texture.max()) < 1e-3:
+        logger.warning("烘焙贴图几乎全黑，请检查 gs_anchors 与 PLY 是否对齐")
     logger.info("UV 贴图已烘焙: %s (%dpx)", output_png.name, texture_size)
     return output_png

@@ -626,6 +626,7 @@ def export_skinned_mesh_from_gaussian(
                 uvs=uvs,
                 uv_faces=uv_faces,
                 anchor_xyz=anchor_xyz,
+                uv_reference_verts=mesh_verts,
             )
         except Exception as exc:
             logger.warning("3DGS UV 贴图烘焙失败，FBX 将无贴图: %s", exc, exc_info=True)

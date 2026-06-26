@@ -130,6 +130,21 @@ def download_model(avatar_id: str):
     return FileResponse(ply, filename="avatar.ply", media_type="application/octet-stream")
 
 
+@router.get("/avatars/{avatar_id}/mesh/texture")
+def download_mesh_texture(avatar_id: str):
+    """烘焙的 avatar_diffuse.png（FBX 未内嵌贴图时供 3dviewer 单独加载）。"""
+    meta = _load_meta(avatar_id)
+    path = meta.get("mesh_texture_path")
+    if not path or not Path(path).exists():
+        output_dir = _avatar_dir(avatar_id) / "output"
+        fallback = output_dir / "avatar_diffuse.png"
+        if fallback.is_file():
+            path = str(fallback)
+        else:
+            raise HTTPException(404, "Diffuse 贴图尚未生成")
+    return FileResponse(path, filename="avatar_diffuse.png", media_type="image/png")
+
+
 @router.get("/avatars/{avatar_id}/mesh")
 def download_skinned_mesh(avatar_id: str, format: str = "fbx"):
     meta = _load_meta(avatar_id)

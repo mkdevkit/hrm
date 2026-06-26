@@ -62,6 +62,13 @@ function isAcceptedFile(file: File): boolean {
   return ACCEPT_EXT.some((ext) => lower.endsWith(ext));
 }
 
+function resolveHrmTextureUrl(params: URLSearchParams): string | null {
+  const avatarId = params.get("avatar");
+  if (!avatarId) return null;
+  const apiBase = (params.get("api") || "http://localhost:8000").replace(/\/$/, "");
+  return `${apiBase}/api/v1/avatars/${avatarId}/mesh/texture`;
+}
+
 function resolveHrmModelUrl(params: URLSearchParams): string | null {
   const avatarId = params.get("avatar");
   if (!avatarId) return null;
@@ -103,7 +110,11 @@ async function loadSource(source: string, displayName?: string) {
 
   try {
     const v = await ensureViewer();
-    const result = await v.loadFromUrl(source, displayName);
+    const params = new URLSearchParams(window.location.search);
+    const textureUrl = resolveHrmTextureUrl(params);
+    const result = await v.loadFromUrl(source, displayName, {
+      externalTextureUrl: textureUrl ?? undefined,
+    });
     if (result.animations.length > 0) {
       setStatusCustom(
         t("statusLoadedWithAnim", {

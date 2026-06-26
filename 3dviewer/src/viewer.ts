@@ -79,6 +79,38 @@ function createSkinMaterial(): THREE.MeshStandardMaterial {
   });
 }
 
+function modelHasDiffuseMap(object: THREE.Object3D): boolean {
+  let found = false;
+  object.traverse((node) => {
+    if (found || !(node instanceof THREE.Mesh)) return;
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    for (const mat of mats) {
+      if (mat && materialHasTexture(mat)) {
+        found = true;
+        break;
+      }
+    }
+  });
+  return found;
+}
+
+function applyDiffuseTexture(object: THREE.Object3D, texture: THREE.Texture): void {
+  object.traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return;
+    const applyOne = (material: THREE.Material): THREE.Material => {
+      material.dispose();
+      return createUnlitTextureMaterial(texture);
+    };
+    if (Array.isArray(node.material)) {
+      node.material = node.material.map(applyOne);
+    } else if (node.material) {
+      node.material = applyOne(node.material);
+    } else {
+      node.material = createUnlitTextureMaterial(texture);
+    }
+  });
+}
+
 function enhanceMeshAppearance(object: THREE.Object3D): void {
   object.traverse((node) => {
     if (!(node instanceof THREE.Mesh)) return;
@@ -245,7 +277,7 @@ export class ModelViewer {
     }
   }
 
-  async loadFromUrl(url: string, fileName?: string): Promise<LoadedModel> {
+  async loadFromUrl(url: string, fileName?: string, options?: { externalTextureUrl?: string }): Promise<LoadedModel> {
     const format = inferFormat(url, fileName);
     const displayName = fileName || url.split("/").pop()?.split("?")[0] || "model";
 
@@ -265,6 +297,17 @@ export class ModelViewer {
       const loader = new OBJLoader();
       root = await loader.loadAsync(url);
       animations = [];
+    }
+
+    if (options?.externalTextureUrl && !modelHasDiffuseMap(root)) {
+      const texLoader = new THREE.TextureLoader();
+      texLoader.setCrossOrigin("anonymous");
+      try {
+        const texture = await texLoader.loadAsync(options.externalTextureUrl);
+        applyDiffuseTexture(root, texture);
+      } catch {
+        /* 无贴图时仍走 enhanceMeshAppearance 的肤色回退 */
+      }
     }
 
     this.setModel(root, animations, displayName);

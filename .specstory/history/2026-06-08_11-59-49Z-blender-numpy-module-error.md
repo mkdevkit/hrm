@@ -26894,3 +26894,900 @@ _**Agent (default)**_
 
 <think><details><summary>Thought Process</summary>
 正在分析 LHM++ 推理流程，以定位模板和颜色未还原的原因。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhm_infer_utils.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch">
+<details>
+<summary>Tool use: **web_fetch**</summary>
+
+
+Parameters:
+
+```json
+{
+  "url": "https://raw.githubusercontent.com/aigc3d/LHM-plusplus/main/scripts/inference/app_inference.py"
+}
+```
+Result:
+
+```json
+{
+  "markdown": "# -*- coding: utf-8 -*-\n# @Organization : Tongyi Lab, Alibaba\n# @Author : Lingteng Qiu\n# @Email : 220019047@link.cuhk.edu.cn\n# @Time : 2026-03-10 10:00:00\n# @Function : LHM++ Gradio App inference logic\n\nimport logging\nimport os\nfrom typing import Any, Dict, Optional, Tuple\n\nimport numpy as np\nimport torch\nfrom omegaconf import DictConfig, OmegaConf\n\nfrom core.utils.hf_hub import wrap_model_hub\n\nlogger = logging.getLogger(__name__)\n\n# Default batch size for inference\nDEFAULT_BATCH_SIZE = 40\n\ndef parse_app_configs(\n model_cards: Dict[str, Dict[str, str]],\n) -\u003e Tuple[DictConfig, DictConfig]:\n \"\"\"Parse model configuration from environment variables and config files.\n\n Returns:\n A tuple of (cfg, cfg_train) containing merged configurations.\n \"\"\"\n cli_cfg = OmegaConf.create()\n cfg = OmegaConf.create()\n\n app_model_name = os.environ.get(\"APP_MODEL_NAME\")\n if app_model_name is None:\n raise NotImplementedError(\"APP_MODEL_NAME environment variable must be set\")\n\n model_card = model_cards[app_model_name]\n model_path = model_card[\"model_path\"]\n model_config = model_card[\"model_config\"]\n\n cli_cfg.model_name = model_path\n\n if model_config is not None:\n cfg_train = OmegaConf.load(model_config)\n use_pred_render = OmegaConf.select(\n cfg_train, \"model.use_pred_shape_for_render\", default=False\n )\n cfg.use_smplx_shape_estimator = not bool(use_pred_render)\n if not cfg.use_smplx_shape_estimator:\n logger.warning(\n \"SMPL-X FREE model: DO NOT USE SMPL-X PRIOR \"\n \"(PoseEstimator / SMPL-X shape-from-image estimation is disabled).\"\n )\n cfg.source_size = cfg_train.dataset.source_image_res\n try:\n cfg.src_head_size = cfg_train.dataset.src_head_size\n except AttributeError:\n cfg.src_head_size = 112\n cfg.render_size = cfg_train.dataset.render_image.high\n\n _relative_path = os.path.join(\n cfg_train.experiment.parent,\n cfg_train.experiment.child,\n os.path.basename(cli_cfg.model_name).split(\"_\")[-1],\n )\n\n cfg.save_tmp_dump = os.path.join(\"exps\", \"save_tmp\", _relative_path)\n cfg.image_dump = os.path.join(\"exps\", \"images\", _relative_path)\n cfg.video_dump = os.path.join(\"exps\", \"videos\", _relative_path)\n\n cfg.motion_video_read_fps = 6\n cfg.merge_with(cli_cfg)\n cfg.setdefault(\"logger\", \"INFO\")\n assert cfg.model_name is not None, \"model_name is required\"\n\n return cfg, cfg_train\n\ndef build_app_model(cfg: DictConfig) -\u003e torch.nn.Module:\n \"\"\"Build and load the LHM model from pretrained weights.\n\n Args:\n cfg: Configuration object containing model_name and other parameters.\n\n Returns:\n Loaded LHM model ready for inference.\n \"\"\"\n from core.models import model_dict\n\n model_cls = wrap_model_hub(model_dict[\"human_lrm_a4o\"])\n model = model_cls.from_pretrained(cfg.model_name)\n return model\n\n@torch.no_grad()\ndef inference_results(\n model: torch.nn.Module,\n ref_img_tensors: torch.Tensor,\n smplx_params: Dict[str, torch.Tensor],\n motion_seq: Dict[str, Any],\n video_size: int = 40,\n ref_imgs_bool: Optional[torch.Tensor] = None,\n visualized_center: bool = False,\n batch_size: int = DEFAULT_BATCH_SIZE,\n device: str = \"cuda\",\n infer_output_renderer: str = \"neural\",\n) -\u003e np.ndarray:\n \"\"\"Run inference on a motion sequence with batching to prevent OOM.\n\n Args:\n model: LHM model for human animation.\n ref_img_tensors: Reference image tensors of shape (N, C, H, W).\n smplx_params: SMPL-X parameters for the initial pose.\n motion_seq: Dictionary containing motion sequence data.\n video_size: Total number of frames to render.\n ref_imgs_bool: Boolean mask indicating which reference images to use.\n visualized_center: If True, crops output to subject bounds with 10% padding.\n batch_size: Number of frames to process in each batch.\n device: Device to run inference on.\n infer_output_renderer: &#96;&#96;\"neural\"&#96;&#96; applies the refinement decoder after GS\n rasterization; &#96;&#96;\"gs\"&#96;&#96; outputs rasterized Gaussian splat RGB only.\n\n Returns:\n Rendered RGB frames as numpy array of shape (T, H, W, 3).\n \"\"\"\n offset_list = motion_seq.get(\"offset_list\")\n ori_h, ori_w = motion_seq.get(\"ori_size\", (512, 512))\n output_rgb = torch.ones((ori_h, ori_w, 3))\n ref_imgs_bool = torch.ones(\n ref_img_tensors.shape[0], dtype=torch.bool, device=device\n )\n\n smplx_params_dev = {k: v.to(device) for k, v in smplx_params.items()}\n use_pred_render = getattr(model, \"use_pred_shape_for_render\", False)\n\n model_outputs = model.infer_single_view(\n ref_img_tensors.unsqueeze(0).to(device),\n None,\n None,\n render_c2ws=motion_seq[\"render_c2ws\"].to(device),\n render_intrs=motion_seq[\"render_intrs\"].to(device),\n render_bg_colors=motion_seq[\"render_bg_colors\"].to(device),\n smplx_params=smplx_params_dev,\n ref_imgs_bool=ref_imgs_bool.unsqueeze(0),\n return_pred_shape=use_pred_render,\n )\n\n pred_shape = None\n if len(model_outputs) == 8:\n (\n gs_model_list,\n query_points,\n transform_mat_neutral_pose,\n gs_hidden_features,\n image_latents,\n motion_emb,\n pos_emb,\n pred_shape,\n ) = model_outputs\n elif len(model_outputs) == 7:\n (\n gs_model_list,\n query_points,\n transform_mat_neutral_pose,\n gs_hidden_features,\n image_latents,\n motion_emb,\n pos_emb,\n ) = model_outputs\n else:\n (\n gs_model_list,\n query_points,\n transform_mat_neutral_pose,\n gs_hidden_features,\n image_latents,\n motion_emb,\n ) = model_outputs\n pos_emb = None\n\n if pred_shape is not None and use_pred_render:\n smplx_for_animation = type(model).smplx_params_with_pred_shape_betas(\n smplx_params_dev, pred_shape\n )\n animation_betas = smplx_for_animation[\"betas\"]\n else:\n animation_betas = smplx_params_dev[\"betas\"]\n\n batch_smplx_params = {\n \"betas\": animation_betas,\n \"transform_mat_neutral_pose\": transform_mat_neutral_pose,\n }\n\n frame_varying_keys = [\n \"root_pose\",\n \"body_pose\",\n \"jaw_pose\",\n \"leye_pose\",\n \"reye_pose\",\n \"lhand_pose\",\n \"rhand_pose\",\n \"trans\",\n \"focal\",\n \"princpt\",\n \"img_size_wh\",\n \"expr\",\n ]\n\n batch_rgb_list = []\n batch_mask_list = []\n num_batches = (video_size + batch_size - 1) // batch_size\n\n for batch_idx in range(0, video_size, batch_size):\n current_batch = batch_idx // batch_size + 1\n print(f\"Processing batch {current_batch}/{num_batches}\")\n\n batch_smplx_params.update(\n {\n key: motion_seq[\"smplx_params\"][key][\n :, batch_idx : batch_idx + batch_size\n ].to(device)\n for key in frame_varying_keys\n }\n )\n\n mask_seqs = (\n motion_seq.get(\"masks\", [])[batch_idx : batch_idx + batch_size]\n if \"masks\" in motion_seq\n else None\n )\n\n anim_kwargs = {\n \"gs_model_list\": gs_model_list,\n \"query_points\": query_points,\n \"smplx_params\": batch_smplx_params,\n \"render_c2ws\": motion_seq[\"render_c2ws\"][\n :, batch_idx : batch_idx + batch_size\n ].to(device),\n \"render_intrs\": motion_seq[\"render_intrs\"][\n :, batch_idx : batch_idx + batch_size\n ].to(device),\n \"render_bg_colors\": motion_seq[\"render_bg_colors\"][\n :, batch_idx : batch_idx + batch_size\n ].to(device),\n \"gs_hidden_features\": gs_hidden_features,\n \"image_latents\": image_latents,\n \"motion_emb\": motion_emb,\n }\n\n if pos_emb is not None:\n anim_kwargs[\"pos_emb\"] = pos_emb\n if offset_list is not None:\n anim_kwargs[\"offset_list\"] = offset_list[batch_idx : batch_idx + batch_size]\n if mask_seqs is not None:\n anim_kwargs[\"mask_seqs\"] = mask_seqs\n if output_rgb is not None:\n anim_kwargs[\"output_rgb\"] = output_rgb\n anim_kwargs[\"infer_output_renderer\"] = infer_output_renderer\n\n batch_rgb, batch_mask = model.animation_infer(**anim_kwargs)\n batch_rgb_list.append((batch_rgb.clamp(0, 1) * 255).to(torch.uint8).numpy())\n batch_mask_list.append((batch_mask.clamp(0, 1) * 255).to(torch.uint8).numpy())\n \n print(\"End of inference\")\n \n if visualized_center:\n mask_numpy = np.concatenate(batch_mask_list, axis=0)\n h_indices, w_indices = np.where(mask_numpy \u003e 0.25)[1:]\n\n if len(h_indices) \u003e 0 and len(w_indices) \u003e 0:\n top, bottom = h_indices.min(), h_indices.max()\n left, right = w_indices.min(), w_indices.max()\n\n center_y, center_x = (top + bottom) / 2, (left + right) / 2\n height, width = bottom - top, right - left\n new_height, new_width = height * 1.1, width * 1.1\n\n top_new = max(0, int(center_y - new_height / 2))\n bottom_new = int(center_y + new_height / 2)\n left_new = max(0, int(center_x - new_width / 2))\n right_new = int(center_x + new_width / 2)\n\n rgb = np.concatenate(batch_rgb_list, axis=0)\n output = rgb[:, top_new:bottom_new, left_new:right_new]\n else:\n output = np.concatenate(batch_rgb_list, axis=0)\n else:\n output = np.concatenate(batch_rgb_list, axis=0)\n\n return output\n",
+  "url": "https://raw.githubusercontent.com/aigc3d/LHM-plusplus/main/scripts/inference/app_inference.py"
+}
+```
+User decision: **accepted**
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch"><details>
+<summary>Tool use: **web_fetch**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+关键在于 LHM 模型的 `query_points` 和 `transform_mat_neutral_pose`。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch">
+<details>
+<summary>Tool use: **web_fetch**</summary>
+
+
+Parameters:
+
+```json
+{
+  "url": "https://raw.githubusercontent.com/aigc3d/LHM-plusplus/main/scripts/inference/to_gs_ply.py"
+}
+```
+Result:
+
+```json
+{
+  "markdown": "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n# @Function : Export Gaussian Splatting as PLY (T-pose or SMPL-X frame; CLI + loaders)\n\n\"\"\"\nExport canonical (T-pose) Gaussian Splatting as PLY.\n\nThis script mirrors the model / image / SMPL-X shape loading path used by\n&#96;&#96;scripts/test/test_app_case.py&#96;&#96; and &#96;&#96;scripts/inference/app_inference.py&#96;&#96;,\nthen runs &#96;&#96;infer_single_view&#96;&#96; → &#96;&#96;inference_gs&#96;&#96; → &#96;&#96;GaussianModel.save_ply&#96;&#96;.\n\nSupported models must appear in &#96;&#96;core.utils.model_card.GS_RENDER_SUPPORTED_MODEL_NAMES&#96;&#96;\n(models with Gaussian/3DGS output). Using any other &#96;&#96;--model_name&#96;&#96; is rejected before load.\n\nUsage:\n # 仅图像：合成相机 + 规范 T-pose（&#96;&#96;--pose_dir&#96;&#96; 默认为空）\n python scripts/inference/to_gs_ply.py \\\\\n --model_name LHMPP-700M-PixelShuffle \\\\\n --model_path ./pretrained_models/Damo_XR_Lab/LHMPP-700M-PixelShuffle \\\\\n --image_glob \"./assets/example_multi_images/00000_yuliang_*.png\"\n\n # 指定某一帧 SMPL-X JSON：用该文件内相机与姿态做 animation 导出（不经视频/mask 管线）\n python scripts/inference/to_gs_ply.py \\\\\n --pose_dir \"./motion_video/BasketBall_I/smplx_params/00014.json\" \\\\\n --image_glob \"./assets/example_multi_images/00000_yuliang_*.png\"\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nimport glob\nimport importlib.util\nimport json\nimport math\nimport os\nimport sys\nfrom pathlib import Path\nfrom contextlib import contextmanager\nfrom types import SimpleNamespace\nfrom typing import Any\n\n_LHM_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\nsys.path.insert(0, _LHM_ROOT)\n\nimport numpy as np\nimport torch\nfrom accelerate import Accelerator\nfrom PIL import Image\n\ntorch._dynamo.config.disable = True\n\ndef _load_module(unique_name: str, rel_path: str) -\u003e Any:\n \"\"\"Load a project module by path.\n\n Avoids &#96;&#96;import scripts...&#96;&#96; because a PyPI distribution named &#96;&#96;scripts&#96;&#96; can\n shadow the project's &#96;&#96;scripts&#96;&#96; package.\n \"\"\"\n path = os.path.join(_LHM_ROOT, rel_path)\n spec = importlib.util.spec_from_file_location(unique_name, path)\n if spec is None or spec.loader is None:\n raise ImportError(f\"Cannot load module from {path}\")\n mod = importlib.util.module_from_spec(spec)\n spec.loader.exec_module(mod)\n return mod\n\n_ai = _load_module(\"_lhmpp_app_inference\", \"scripts/inference/app_inference.py\")\nbuild_app_model = _ai.build_app_model\nparse_app_configs = _ai.parse_app_configs\n\nfrom core.utils.model_card import (\n GS_RENDER_SUPPORTED_MODEL_NAMES,\n MODEL_CONFIG,\n model_supports_gs_render,\n)\nfrom core.utils.model_download_utils import AutoModelQuery\n\ndef _require_gs_output_model(model_name: str) -\u003e None:\n \"\"\"Fail fast if checkpoint is not wired for Gaussian export (infer_single_view + inference_gs).\"\"\"\n if model_supports_gs_render(model_name):\n return\n allowed = \", \".join(GS_RENDER_SUPPORTED_MODEL_NAMES) or \"(none configured)\"\n raise ValueError(\n f\"T-pose Gaussian PLY export requires a GS-output model (--model_name in \"\n f\"GS_RENDER_SUPPORTED_MODEL_NAMES). Got {model_name!r}; supported: {allowed}. \"\n f\"Extend the allowlist in core/utils/model_card.py when a new GS build is validated.\"\n )\n\ndef _parse_smplx_raw(smplx_raw_data: dict[str, Any]) -\u003e dict[str, torch.Tensor]:\n \"\"\"Match &#96;&#96;core.runners.infer.utils._parse_smplx_param&#96;&#96; without importing the runners package.\"\"\"\n return {\n k: torch.FloatTensor(v)\n for k, v in smplx_raw_data.items()\n if \"pad_ratio\" not in k\n }\n\ndef _gs_model_name_choices() -\u003e list[str]:\n if not GS_RENDER_SUPPORTED_MODEL_NAMES:\n raise RuntimeError(\n \"GS_RENDER_SUPPORTED_MODEL_NAMES is empty in core/utils/model_card.py; \"\n \"add at least one model with 3DGS output.\"\n )\n return list(GS_RENDER_SUPPORTED_MODEL_NAMES)\n\ndef _effective_pose_dir(args: argparse.Namespace) -\u003e str | None:\n \"\"\"Unset, empty string, or whitespace &#96;&#96;--pose_dir&#96;&#96; =\u003e no pose file (T-pose / synthetic camera).\"\"\"\n v = getattr(args, \"pose_dir\", None)\n if v is None:\n return None\n s = str(v).strip()\n return s if s else None\n\ndef _derive_pose_seq_folder_name(pose_json_path: str) -\u003e str:\n \"\"\"&#96;&#96;.../BasketBall_I/smplx_params/00014.json&#96;&#96; -\u003e &#96;&#96;BasketBall_I&#96;&#96;.\"\"\"\n p = Path(pose_json_path).resolve()\n if p.parent.name == \"smplx_params\":\n return _sanitize_export_folder_name(p.parent.parent.name)\n return _sanitize_export_folder_name(p.parent.name)\n\ndef _sanitize_export_folder_name(name: str) -\u003e str:\n \"\"\"Single path segment for &#96;{folder_name}.ply&#96; (no slashes, trimmed).\"\"\"\n name = (name or \"\").strip()\n name = os.path.basename(name.replace(\"\\\\\", \"/\"))\n for c in '/:*?\"\u003c\u003e|':\n name = name.replace(c, \"_\")\n name = name.strip(\"._\") or \"tpose_export\"\n return name[:200]\n\ndef _derive_input_image_folder_name(args: argparse.Namespace) -\u003e str:\n \"\"\"Subfolder / parent-dir name for reference images (no motion in path).\"\"\"\n if args.images_dir is not None:\n return _sanitize_export_folder_name(\n os.path.basename(os.path.normpath(args.images_dir))\n )\n paths = _resolve_image_paths(args)\n if paths:\n parent = os.path.dirname(os.path.abspath(paths[0]))\n base = os.path.basename(parent)\n if base and base not in (\".\", \"\"):\n return _sanitize_export_folder_name(base)\n return _sanitize_export_folder_name(\n os.path.splitext(os.path.basename(paths[0]))[0]\n )\n return \"ref_images\"\n\ndef _derive_folder_name_for_tpose_output(args: argparse.Namespace) -\u003e str:\n \"\"\"Filename stem for image-only export under &#96;&#96;outputs/tpose_output/&#96;&#96;.\"\"\"\n return _derive_input_image_folder_name(args)\n\ndef default_export_output_path(args: argparse.Namespace) -\u003e str:\n \"\"\"T-pose: &#96;&#96;outputs/tpose_output/{ref}.ply&#96;&#96;; posed: &#96;&#96;outputs/animation_output/{seq}/{ref}_{frame}.ply&#96;&#96;.\"\"\"\n pose_path = _effective_pose_dir(args)\n if pose_path is None:\n folder = _derive_folder_name_for_tpose_output(args)\n return os.path.join(_LHM_ROOT, \"outputs\", \"tpose_output\", f\"{folder}.ply\")\n pose_path = str(Path(pose_path).expanduser())\n motion_key = _derive_pose_seq_folder_name(pose_path)\n img_key = _derive_input_image_folder_name(args)\n frame_stem = _sanitize_export_folder_name(Path(pose_path).stem)\n fname = f\"{img_key}_{frame_stem}.ply\"\n return os.path.join(\n _LHM_ROOT,\n \"outputs\",\n \"animation_output\",\n motion_key,\n fname,\n )\n\ndef prior_model_check(save_dir: str = \"./pretrained_models\") -\u003e None:\n \"\"\"Same behavior as &#96;&#96;app.prior_model_check&#96;&#96; without importing Gradio (&#96;&#96;app.py&#96;&#96;).\"\"\"\n human_model_path = os.path.join(save_dir, \"human_model_files\")\n if os.path.exists(human_model_path):\n return\n if os.path.islink(human_model_path):\n try:\n os.unlink(human_model_path)\n print(\"Removed broken symlink: human_model_files\")\n except OSError as e:\n print(f\"Failed to remove broken symlink: {e}\")\n print(\"Prior models not found or invalid. Downloading...\")\n auto_query = AutoModelQuery(save_dir=save_dir)\n auto_query.download_all_prior_models()\n print(\"Prior models ready.\")\n\n@contextmanager\ndef _easy_memory_manager(model: torch.nn.Module, device: str = \"cuda\"):\n \"\"\"Same behavior as &#96;&#96;scripts.inference.utils.easy_memory_manager&#96;&#96; without importing Gradio.\"\"\"\n del device\n if torch.cuda.is_available():\n dev = f\"cuda:{torch.cuda.current_device()}\"\n else:\n dev = \"cpu\"\n model.to(dev)\n try:\n yield model\n finally:\n model.to(\"cpu\")\n if torch.cuda.is_available():\n torch.cuda.empty_cache()\n\ndef build_arg_parser() -\u003e argparse.ArgumentParser:\n gs_names = _gs_model_name_choices()\n parser = argparse.ArgumentParser(\n description=\"Load LHM++ and export Gaussian Splatting as PLY (T-pose or SMPL-X frame; same path as app / test_app_case).\"\n )\n parser.add_argument(\n \"--model_name\",\n type=str,\n default=gs_names[0],\n choices=gs_names,\n help=(\n \"Model card key (configs + HF/MS ids). Restricted to \"\n \"GS_RENDER_SUPPORTED_MODEL_NAMES in core/utils/model_card.py.\"\n ),\n )\n parser.add_argument(\n \"--model_path\",\n type=str,\n default=None,\n help=\"Local checkpoint directory; skips AutoModelQuery when set.\",\n )\n parser.add_argument(\n \"--image_glob\",\n type=str,\n default=\"./assets/example_multi_images/00000_yuliang_*.png\",\n help=\"Glob for reference images (ignored if --images_dir is set).\",\n )\n parser.add_argument(\n \"--images_dir\",\n type=str,\n default=None,\n help=\"Directory of images (*.png, *.jpg, ...); overrides --image_glob when set.\",\n )\n parser.add_argument(\n \"--pose_dir\",\n type=str,\n default=\"\",\n help=(\n \"Path to one SMPL-X parameter JSON (e.g. motion_video/BasketBall_I/smplx_params/00014.json). \"\n \"Optional matching FLAME file: ../flame_params/\u003csame_name\u003e.json. \"\n \"Default empty =\u003e canonical T-pose export with a synthetic camera (no motion file).\"\n ),\n )\n parser.add_argument(\n \"--ref_view\",\n type=int,\n default=8,\n help=\"Number of reference views (same as Gradio / test_app_case).\",\n )\n parser.add_argument(\n \"--output\",\n type=str,\n default=None,\n help=(\n \"Target PLY path. Default when &#96;&#96;--pose_dir&#96;&#96; is empty: \"\n \" /outputs/tpose_output/{ref_images_parent}.ply; \"\n \"with a pose JSON: /outputs/animation_output/{seq}/{ref_images_parent}_{json_stem}.ply\"\n ),\n )\n parser.add_argument(\n \"--work_dir\",\n type=str,\n default=None,\n help=\"Working directory for intermediates (default: \u003coutput_parent\u003e/debug/tpose_gs_work).\",\n )\n parser.add_argument(\n \"--device\",\n type=str,\n default=\"cuda\",\n help=\"Device for model and tensors.\",\n )\n return parser\n\ndef _list_images_from_dir(images_dir: str, max_views: int) -\u003e list[str]:\n patterns = (\"*.png\", \"*.jpg\", \"*.jpeg\", \"*.PNG\", \"*.JPG\", \"*.JPEG\")\n paths: list[str] = []\n for pat in patterns:\n paths.extend(glob.glob(os.path.join(images_dir, pat)))\n paths = sorted(set(paths))[:max_views]\n if not paths:\n raise FileNotFoundError(f\"No images found in directory: {images_dir}\")\n return paths\n\ndef _resolve_image_paths(args: argparse.Namespace) -\u003e list[str]:\n if args.images_dir is not None:\n return _list_images_from_dir(args.images_dir, max_views=8)\n paths = sorted(glob.glob(args.image_glob))[:8]\n if not paths:\n raise FileNotFoundError(f\"No images matched glob: {args.image_glob}\")\n return paths\n\ndef _synthetic_render_hw(cfg) -\u003e tuple[int, int]:\n \"\"\"Match &#96;&#96;prepare_motion_seqs_eval&#96;&#96; sizing: &#96;&#96;tgt_h = tgt_size * aspect_standard&#96;&#96;.\"\"\"\n render_res = int(cfg.get(\"render_size\", 420))\n aspect_standard = 5.0 / 3.0\n tgt_h = int(round(render_res * aspect_standard))\n tgt_w = render_res\n return tgt_h, tgt_w\n\ndef _load_pose_minimal(pose: dict[str, torch.Tensor]) -\u003e tuple[torch.Tensor, torch.Tensor]:\n \"\"\"Same as &#96;&#96;core.runners.infer.utils._load_pose&#96;&#96; (no package import).\"\"\"\n intrinsic = torch.eye(4)\n intrinsic[0, 0] = pose[\"focal\"][0]\n intrinsic[1, 1] = pose[\"focal\"][1]\n intrinsic[0, 2] = pose[\"princpt\"][0]\n intrinsic[1, 2] = pose[\"princpt\"][1]\n intrinsic = intrinsic.float()\n c2w = torch.eye(4).float()\n return c2w, intrinsic\n\ndef _stack_smplx_params_list_minimal(\n smplx_params_list: list[dict[str, torch.Tensor]], shape_param: torch.Tensor\n) -\u003e dict[str, torch.Tensor]:\n \"\"\"Same as &#96;&#96;_stack_smplx_params_list&#96;&#96; in infer utils.\"\"\"\n from collections import defaultdict\n\n stacked: dict[str, list] = defaultdict(list)\n for sp in smplx_params_list:\n for k, v in sp.items():\n stacked[k].append(v)\n result = {k: torch.stack(v) for k, v in stacked.items()}\n result[\"betas\"] = shape_param\n return result\n\ndef _to_motion_batch_dict_minimal(\n c2ws: torch.Tensor,\n intrs: torch.Tensor,\n bg_colors: torch.Tensor,\n smplx_params: dict[str, torch.Tensor],\n rgbs: list,\n vis_motion: bool,\n) -\u003e dict[str, Any]:\n \"\"\"Same as &#96;&#96;_to_motion_batch_dict&#96;&#96; with &#96;&#96;vis_motion=False&#96;&#96; (no SMPL mesh render).\"\"\"\n if vis_motion:\n raise NotImplementedError(\"vis_motion True requires full infer utils\")\n for k, v in smplx_params.items():\n smplx_params[k] = v.unsqueeze(0)\n rgbs_out = rgbs.unsqueeze(0) if len(rgbs) \u003e 0 else rgbs\n return {\n \"render_c2ws\": c2ws.unsqueeze(0),\n \"render_intrs\": intrs.unsqueeze(0),\n \"render_bg_colors\": bg_colors.unsqueeze(0),\n \"smplx_params\": smplx_params,\n \"rgbs\": rgbs_out,\n \"vis_motion_render\": None,\n }\n\ndef _build_synthetic_motion_seq(cfg) -\u003e dict[str, Any]:\n \"\"\"One-frame motion dict for &#96;&#96;infer_single_view&#96;&#96; (synthetic camera + neutral pose).\"\"\"\n\n tgt_h, tgt_w = _synthetic_render_hw(cfg)\n Wf, Hf = float(tgt_w), float(tgt_h)\n fx = max(Wf, Hf)\n fy = max(Wf, Hf)\n cx = Wf / 2.0\n cy = Hf / 2.0\n\n zf = torch.float32\n betas = torch.zeros(10, dtype=zf)\n frame: dict[str, torch.Tensor] = {\n \"betas\": betas,\n \"root_pose\": torch.zeros(3, dtype=zf),\n \"body_pose\": torch.zeros(21, 3, dtype=zf),\n \"jaw_pose\": torch.zeros(3, dtype=zf),\n \"leye_pose\": torch.zeros(3, dtype=zf),\n \"reye_pose\": torch.zeros(3, dtype=zf),\n \"lhand_pose\": torch.zeros(15, 3, dtype=zf),\n \"rhand_pose\": torch.zeros(15, 3, dtype=zf),\n \"trans\": torch.zeros(3, dtype=zf),\n \"expr\": torch.zeros(100, dtype=zf),\n \"focal\": torch.tensor([fx, fy], dtype=zf),\n \"princpt\": torch.tensor([cx, cy], dtype=zf),\n \"img_size_wh\": torch.tensor([Wf, Hf], dtype=zf),\n }\n c2w, intr = _load_pose_minimal(frame)\n stacked = _stack_smplx_params_list_minimal([frame], betas)\n c2ws = c2w.unsqueeze(0)\n intrs = intr.unsqueeze(0)\n bg_colors = torch.tensor([1.0], dtype=torch.float32).unsqueeze(-1).repeat(1, 3)\n base = _to_motion_batch_dict_minimal(c2ws, intrs, bg_colors, stacked, [], vis_motion=False)\n base[\"offset_list\"] = [[1.0, 1.0, 0.0, 0.0]]\n base[\"ori_size\"] = (tgt_h, tgt_w)\n base[\"motion_seqs\"] = []\n return base\n\ndef _build_motion_seq_from_pose_json(json_path: str, cfg: Any) -\u003e dict[str, Any]:\n \"\"\"Single-frame &#96;&#96;motion_seq&#96;&#96; dict from one SMPL-X JSON (no video / mask / &#96;&#96;get_motion_information&#96;&#96;).\"\"\"\n path = str(Path(json_path).expanduser().resolve())\n if not os.path.isfile(path):\n raise FileNotFoundError(f\"--pose_dir must be an existing SMPL-X JSON file: {path}\")\n if not path.lower().endswith(\".json\"):\n raise ValueError(\n f\"--pose_dir must point to a .json file (e.g. .../smplx_params/00014.json), got {path!r}\"\n )\n\n with open(path, \"r\", encoding=\"utf-8\") as f:\n raw: dict[str, Any] = json.load(f)\n\n p = Path(path)\n if p.parent.name == \"smplx_params\":\n flame_path = p.parent.parent / \"flame_params\" / p.name\n else:\n flame_path = p.parent / \"flame_params\" / p.name\n if flame_path.is_file():\n with open(flame_path, \"r\", encoding=\"utf-8\") as f:\n flame_params = json.load(f)\n raw[\"expr\"] = flame_params[\"expcode\"]\n pc = flame_params[\"posecode\"]\n raw[\"jaw_pose\"] = pc[3:6] if len(pc) \u003e= 6 else [0.0, 0.0, 0.0]\n ec = flame_params[\"eyecode\"]\n raw[\"leye_pose\"] = ec[:3] if len(ec) \u003e= 3 else [0.0, 0.0, 0.0]\n raw[\"reye_pose\"] = ec[3:6] if len(ec) \u003e= 6 else [0.0, 0.0, 0.0]\n\n if \"expr\" not in raw:\n raw[\"expr\"] = [0.0] * 100\n\n smplx_param = _parse_smplx_raw(raw)\n c2w, intr = _load_pose_minimal(smplx_param)\n shape_param = smplx_param[\"betas\"]\n stacked = _stack_smplx_params_list_minimal([smplx_param], shape_param)\n c2ws = c2w.unsqueeze(0)\n intrs = intr.unsqueeze(0)\n bg_colors = torch.tensor([1.0], dtype=torch.float32).unsqueeze(-1).repeat(1, 3)\n base = _to_motion_batch_dict_minimal(c2ws, intrs, bg_colors, stacked, [], vis_motion=False)\n if \"img_size_wh\" in smplx_param:\n wh = smplx_param[\"img_size_wh\"]\n tgt_w, tgt_h = int(wh[0].item()), int(wh[1].item())\n else:\n tgt_h, tgt_w = _synthetic_render_hw(cfg)\n base[\"offset_list\"] = [[1.0, 1.0, 0.0, 0.0]]\n base[\"ori_size\"] = (tgt_h, tgt_w)\n base[\"motion_seqs\"] = []\n return base\n\ndef slice_motion_seq_to_single_frame(\n motion_seq: dict[str, Any], frame_idx: int = 0\n) -\u003e dict[str, Any]:\n \"\"\"Keep the first (or given) frame on the time dimension for cameras and SMPL-X.\"\"\"\n out: dict[str, Any] = dict(motion_seq)\n sl = slice(frame_idx, frame_idx + 1)\n out[\"render_c2ws\"] = motion_seq[\"render_c2ws\"][:, sl]\n out[\"render_intrs\"] = motion_seq[\"render_intrs\"][:, sl]\n out[\"render_bg_colors\"] = motion_seq[\"render_bg_colors\"][:, sl]\n rgbs = motion_seq.get(\"rgbs\")\n if isinstance(rgbs, torch.Tensor) and rgbs.numel() \u003e 0 and rgbs.dim() \u003e= 2:\n out[\"rgbs\"] = rgbs[:, sl]\n\n smplx_in = motion_seq[\"smplx_params\"]\n smplx: dict[str, torch.Tensor] = {}\n time_varying = {\n \"root_pose\",\n \"body_pose\",\n \"jaw_pose\",\n \"leye_pose\",\n \"reye_pose\",\n \"lhand_pose\",\n \"rhand_pose\",\n \"trans\",\n \"expr\",\n \"focal\",\n \"princpt\",\n \"img_size_wh\",\n }\n for k, v in smplx_in.items():\n if k in time_varying and v.dim() \u003e= 2 and v.shape[1] \u003e 1:\n smplx[k] = v[:, sl].clone()\n else:\n smplx[k] = v.clone()\n\n out[\"smplx_params\"] = smplx\n off = motion_seq.get(\"offset_list\")\n if isinstance(off, list) and len(off) \u003e frame_idx:\n out[\"offset_list\"] = [off[frame_idx]]\n mseq = motion_seq.get(\"motion_seqs\")\n if isinstance(mseq, list) and len(mseq) \u003e frame_idx:\n out[\"motion_seqs\"] = [mseq[frame_idx]]\n msks = motion_seq.get(\"masks\")\n if isinstance(msks, list) and len(msks) \u003e frame_idx:\n out[\"masks\"] = [msks[frame_idx]]\n return out\n\ndef cano_body_pose_template(\n device: torch.device | str, dtype: torch.dtype\n) -\u003e torch.Tensor:\n \"\"\"Same canonical body_pose tweaks as &#96;&#96;BaseGSRender._prepare_smplx_data&#96;&#96; (last frame).\"\"\"\n bp = torch.zeros(1, 1, 21, 3, device=device, dtype=dtype)\n # leg\n bp[0, 0, 0, -1] = math.pi / 12\n bp[0, 0, 1, -1] = -math.pi / 12\n # hands\n bp[0, 0, 15, -1] = -math.pi / 6\n bp[0, 0, 16, -1] = math.pi / 6\n return bp\n\ndef build_tpose_smplx_params(\n motion_seq_one: dict[str, Any],\n transform_mat_neutral_pose: torch.Tensor,\n merged_betas: torch.Tensor,\n device: torch.device,\n dtype: torch.dtype,\n) -\u003e dict[str, torch.Tensor]:\n \"\"\"One-frame T-pose SMPL-X dict: canonical pose + merged betas + neutral transform.\"\"\"\n sp: dict[str, torch.Tensor] = {}\n for k, v in motion_seq_one[\"smplx_params\"].items():\n sp[k] = v.to(device=device, dtype=dtype)\n\n sp[\"betas\"] = merged_betas.to(device=device, dtype=dtype)\n sp[\"transform_mat_neutral_pose\"] = transform_mat_neutral_pose.to(\n device=device, dtype=dtype\n )\n\n z31 = torch.zeros(1, 1, 3, device=device, dtype=dtype)\n z_hand = torch.zeros(1, 1, 15, 3, device=device, dtype=dtype)\n n_expr = sp[\"expr\"].shape[-1]\n sp[\"root_pose\"] = z31\n sp[\"body_pose\"] = cano_body_pose_template(device, dtype)\n sp[\"jaw_pose\"] = z31\n sp[\"leye_pose\"] = z31\n sp[\"reye_pose\"] = z31\n sp[\"lhand_pose\"] = z_hand\n sp[\"rhand_pose\"] = z_hand\n sp[\"trans\"] = z31\n sp[\"expr\"] = torch.zeros(1, 1, n_expr, device=device, dtype=dtype)\n return sp\n\ndef build_animation_frame_smplx_params(\n motion_seq_one: dict[str, Any],\n transform_mat_neutral_pose: torch.Tensor,\n merged_betas: torch.Tensor,\n device: torch.device,\n dtype: torch.dtype,\n) -\u003e dict[str, torch.Tensor]:\n \"\"\"First-frame motion SMPL-X for GS export (clip frame 0 pose, not canonical T-pose).\"\"\"\n sp: dict[str, torch.Tensor] = {}\n for k, v in motion_seq_one[\"smplx_params\"].items():\n sp[k] = v.to(device=device, dtype=dtype)\n\n sp[\"betas\"] = merged_betas.to(device=device, dtype=dtype)\n sp[\"transform_mat_neutral_pose\"] = transform_mat_neutral_pose.to(\n device=device, dtype=dtype\n )\n return sp\n\n@torch.no_grad()\ndef run_tpose_export(\n model: torch.nn.Module,\n ref_imgs_tensor: torch.Tensor,\n motion_seq: dict[str, Any],\n device: str,\n output_ply: str,\n *,\n export_animation_pose: bool = False,\n) -\u003e None:\n \"\"\"&#96;&#96;infer_single_view&#96;&#96; → &#96;&#96;inference_gs&#96;&#96; → &#96;&#96;GaussianModel.save_ply&#96;&#96;.\n\n SMPL-X for the forward pass is taken from the first frame of &#96;&#96;motion_seq&#96;&#96; (see\n &#96;&#96;slice_motion_seq_to_single_frame&#96;&#96;), so it matches cameras and body pose length.\n\n If &#96;&#96;export_animation_pose&#96;&#96; is True (non-empty &#96;&#96;--pose_dir&#96;&#96;), the final GS matches that\n JSON pose. Otherwise it uses canonical T-pose in SMPL-X angles.\n \"\"\"\n dev = torch.device(device)\n use_pred_render = getattr(model, \"use_pred_shape_for_render\", False)\n motion_one = slice_motion_seq_to_single_frame(motion_seq, frame_idx=0)\n\n render_c2ws = motion_one[\"render_c2ws\"].to(dev)\n render_intrs = motion_one[\"render_intrs\"].to(dev)\n render_bg_colors = motion_one[\"render_bg_colors\"].to(dev)\n smplx_dev = {k: v.to(dev) for k, v in motion_one[\"smplx_params\"].items()}\n\n ref_batch = ref_imgs_tensor.unsqueeze(0)\n ref_mask = torch.ones(\n ref_imgs_tensor.shape[0], dtype=torch.bool, device=dev\n ).unsqueeze(0)\n\n model_outputs = model.infer_single_view(\n ref_batch,\n None,\n None,\n render_c2ws=render_c2ws,\n render_intrs=render_intrs,\n render_bg_colors=render_bg_colors,\n smplx_params=smplx_dev,\n ref_imgs_bool=ref_mask,\n return_pred_shape=use_pred_render,\n )\n\n pred_shape = None\n if len(model_outputs) == 8:\n (\n gs_model_list,\n query_points,\n transform_mat_neutral_pose,\n gs_hidden_features,\n _image_feats,\n _motion_emb,\n _pos_emb,\n pred_shape,\n ) = model_outputs\n elif len(model_outputs) == 7:\n (\n gs_model_list,\n query_points,\n transform_mat_neutral_pose,\n gs_hidden_features,\n _image_feats,\n _motion_emb,\n _pos_emb,\n ) = model_outputs\n else:\n raise RuntimeError(f\"Unexpected infer_single_view outputs: {len(model_outputs)}\")\n\n merged = type(model).smplx_params_with_pred_shape_betas(smplx_dev, pred_shape)\n merged_betas = merged[\"betas\"]\n\n dtype = merged_betas.dtype\n if export_animation_pose:\n gs_smplx = build_animation_frame_smplx_params(\n motion_one,\n transform_mat_neutral_pose,\n merged_betas,\n dev,\n dtype,\n )\n else:\n gs_smplx = build_tpose_smplx_params(\n motion_one,\n transform_mat_neutral_pose,\n merged_betas,\n dev,\n dtype,\n )\n\n view_idx = 0\n renderer = model.renderer\n if export_animation_pose:\n # &#96;&#96;model.inference_gs&#96;&#96; → &#96;&#96;inference_cano_gs&#96;&#96; only appends &#96;&#96;cano_models&#96;&#96; (last template row\n # from &#96;&#96;_prepare_smplx_data&#96;&#96;), which looks like T-pose. Use &#96;&#96;animate_gs_model&#96;&#96; like\n # &#96;&#96;forward_animate_gs&#96;&#96; and take the first posed view (&#96;&#96;anim_models[0]&#96;&#96;).\n smplx_view = renderer.get_single_view_smpl_data(gs_smplx, view_idx)\n smplx_one = renderer._get_single_batch_data(smplx_view, 0)\n anim_models, _ = renderer.animate_gs_model(\n gs_model_list[0],\n query_points[\"neutral_coords\"][0],\n smplx_one,\n debug=False,\n mesh_meta=query_points[\"mesh_meta\"],\n )\n if not anim_models:\n cano_gs = model.inference_gs(\n gs_model_list,\n query_points,\n gs_smplx,\n render_c2ws,\n render_intrs,\n render_bg_colors,\n gs_hidden_features,\n pad_forward=False,\n )\n else:\n cano_gs = anim_models[0]\n else:\n cano_gs = model.inference_gs(\n gs_model_list,\n query_points,\n gs_smplx,\n render_c2ws,\n render_intrs,\n render_bg_colors,\n gs_hidden_features,\n pad_forward=False,\n )\n out_abs = os.path.abspath(output_ply)\n out_dir = os.path.dirname(out_abs)\n if out_dir:\n os.makedirs(out_dir, exist_ok=True)\n cano_gs.save_ply(out_abs)\n if export_animation_pose:\n print(f\"Saved SMPL-X pose Gaussian PLY to {out_abs}\")\n else:\n print(f\"Saved T-pose canonical Gaussian PLY to {out_abs}\")\n\ndef setup_loaders_and_inputs(args: argparse.Namespace):\n \"\"\"Load cfg, model, reference images, motion tensors, and optional shape-from-image betas.\n\n If &#96;&#96;--pose_dir&#96;&#96; is empty, uses a single-frame synthetic camera and neutral SMPL-X pose.\n If &#96;&#96;--pose_dir&#96;&#96; points to one SMPL-X JSON, loads that frame only (no video / mask pipeline).\n \"\"\"\n _require_gs_output_model(args.model_name)\n from core.utils.app_utils import obtain_ref_imgs\n\n from engine.pose_estimation.pose_estimator import PoseEstimator\n\n device = args.device\n dtype = torch.float32\n\n prior_model_check(save_dir=\"./pretrained_models\")\n model_config = MODEL_CONFIG[args.model_name]\n if args.model_path:\n model_path = args.model_path\n else:\n auto_query = AutoModelQuery(save_dir=\"./pretrained_models\")\n model_path = auto_query.query(args.model_name)\n model_cards = {\n args.model_name: {\n \"model_path\": model_path,\n \"model_config\": model_config,\n }\n }\n\n _ = Accelerator()\n cfg, _ = parse_app_configs(model_cards)\n\n model = build_app_model(cfg)\n model.to(device)\n\n pose_estimator = None\n if cfg.get(\"use_smplx_shape_estimator\", True):\n pose_estimator = PoseEstimator(\"./pretrained_models/human_model_files/\", device=\"cpu\")\n pose_estimator.device = device\n\n image_paths = _resolve_image_paths(args)\n imgs_pil = [Image.open(p) for p in image_paths]\n image_for_prepare = [(np.asarray(img),) for img in imgs_pil]\n\n out_parent = os.path.dirname(os.path.abspath(args.output))\n if not out_parent:\n out_parent = os.getcwd()\n work_dir_path = args.work_dir or os.path.join(out_parent, \"debug\", \"tpose_gs_work\")\n os.makedirs(work_dir_path, exist_ok=True)\n working_dir = SimpleNamespace()\n working_dir.name = os.path.abspath(work_dir_path)\n\n imgs = obtain_ref_imgs(image_for_prepare, ref_view=args.ref_view)\n sample_imgs = np.concatenate(imgs, axis=1)\n save_sample_imgs = os.path.join(working_dir.name, \"raw.png\")\n with Image.fromarray(sample_imgs) as img:\n img.save(save_sample_imgs)\n\n pose_json = _effective_pose_dir(args)\n if pose_json is not None:\n motion_seqs = _build_motion_seq_from_pose_json(pose_json, cfg)\n else:\n motion_seqs = _build_synthetic_motion_seq(cfg)\n\n if pose_estimator is not None:\n with torch.no_grad():\n with _easy_memory_manager(pose_estimator, device=device):\n shape_pose = pose_estimator(imgs[0])\n if not shape_pose.is_full_body:\n raise ValueError(f\"Input image invalid for shape estimator: {shape_pose.msg}\")\n\n img_np = np.stack(imgs) / 255.0\n ref_imgs_tensor = torch.from_numpy(img_np).permute(0, 3, 1, 2).float().to(device)\n smplx_params = motion_seqs[\"smplx_params\"].copy()\n if pose_estimator is not None:\n smplx_params[\"betas\"] = torch.tensor(shape_pose.beta, dtype=dtype, device=device).unsqueeze(0)\n motion_seqs[\"smplx_params\"] = smplx_params\n\n return model, cfg, ref_imgs_tensor, smplx_params, motion_seqs, pose_estimator, device\n\ndef main() -\u003e None:\n parser = build_arg_parser()\n args = parser.parse_args()\n if args.output is None:\n args.output = default_export_output_path(args)\n\n os.environ.update(\n {\n \"APP_ENABLED\": \"1\",\n \"APP_MODEL_NAME\": args.model_name,\n \"APP_TYPE\": \"infer.human_lrm_a4o\",\n \"NUMBA_THREADING_LAYER\": \"omp\",\n }\n )\n\n (\n model,\n cfg,\n ref_imgs_tensor,\n smplx_params,\n motion_seqs,\n pose_estimator,\n device,\n ) = setup_loaders_and_inputs(args)\n\n run_tpose_export(\n model,\n ref_imgs_tensor,\n motion_seqs,\n device=device,\n output_ply=os.path.abspath(args.output),\n export_animation_pose=_effective_pose_dir(args) is not None,\n )\n\nif __name__ == \"__main__\":\n main()\n",
+  "url": "https://raw.githubusercontent.com/aigc3d/LHM-plusplus/main/scripts/inference/to_gs_ply.py"
+}
+```
+User decision: **accepted**
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch"><details>
+<summary>Tool use: **web_fetch**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhm_infer_utils.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: C:\Users\renjihe\.cursor\projects\d-WorkSpace-mkdevkit-hrm\agent-tools\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt",
+  "pattern": "run_tpose_export|query_points|save_ply|inference_gs"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt",
+  "pattern": "run_tpose_export|query_points|save_ply|inference_gs",
+  "topFiles": [
+    {
+      "matchCount": 15,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 15
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: C:\Users\renjihe\.cursor\projects\d-WorkSpace-mkdevkit-hrm\agent-tools\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在排查 PLY 导出逻辑。该环节可能直接导致模板与颜色未能正确还原。
+
+PLY 中的锚点坐标应使用本次推理输出的 `query_points["neutral_coords"]`，而非缓存的静态文件。两者必须保持一致的变换基准，否则位移计算会偏离真实模板。
+
+发现 T-pose 导出时，缓存的静态 PLY 锚点基于 betas=0 的中性姿态，而推理阶段实际使用了图像预测的 merged_betas。两者基准不一致，导致模板与颜色无法还原。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: C:\Users\renjihe\.cursor\projects\d-WorkSpace-mkdevkit-hrm\agent-tools\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+已定位到根本原因。锚点数据存在不匹配：缓存的 dense_sample_points 是基于 canonical 坐标生成的，而 LHM 推理时使用的是 subject-specific 的 neutral_coords（包含特定的 beta 和 transform）。这导致了模板和颜色无法正确还原。
+
+还发现 SMPL 模型的锚点姿态不一致。当前导出代码使用零姿态，但 LHM 标准的 canonical T-pose 包含特定的腿手角度和中性变换矩阵。
+
+修复方案是修改 lhmpp_service，在 PLY 导出阶段保存推理锚点数据：
+- query_neutral_coords.npy
+- transform_mat_neutral_pose.npy
+- mesh_export_meta.json（记录 dense_sample_pts 数量、cano_pose_type、betas 等元数据）
+
+直接修改 run_tpose_export 不方便，因为涉及 fork。更干净的做法是在 lhm_infer_utils.py 中新增 `export_gs_ply_with_anchors()`：先调用 infer_single_view，再保存推理得到的 neutral_coords 与 transform_mat_neutral_pose，最后执行 inference_gs 并导出 PLY。这样无需改动原始导出流程即可获取准确的锚点数据。
+
+决定在 lhmpp_service 中替换 `run_tpose_export` 调用，改用 `run_tpose_export_and_save_anchors` 包装器。该包装器会先保存推理锚点的 sidecar 文件，再执行标准导出流程，避免重复代码。
+
+同时确定网格加载方式：改用 LHM 的 canonical SMPL-X 渲染器，而非直接使用原始 SMPL_Layer。具体需要传入 canonical body pose template 以及中性姿态的 transform_mat_neutral_pose，确保锚点姿态与渲染结果对齐。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "path": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools",
+  "pattern": "transform_mat_neutral|neutral_coords"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools",
+  "pattern": "transform_mat_neutral|neutral_coords",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt"
+    },
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\fcedb6a2-f59c-44dc-b8da-4ab17050da25.txt"
+    },
+    {
+      "matchCount": 4,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\e46bcbfc-2b48-4f32-a865-ad670619a62e.txt"
+    },
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\490bf976-f94f-4adc-b027-5e5bf51184a2.txt"
+    },
+    {
+      "matchCount": 3,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\81ac465c-ee64-4741-b85d-efe47d8d973b.txt"
+    },
+    {
+      "matchCount": 12,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\33de581e-c422-4148-991d-a50a6b15d3f4.txt"
+    },
+    {
+      "matchCount": 4,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\c6e74fa9-d61b-4f1e-b034-bc78487c6e00.txt"
+    },
+    {
+      "matchCount": 3,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\84c8cb4e-692c-4136-a6bf-2cb70fe0f0ec.txt"
+    },
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\da8876a2-07ac-4194-a348-9f0e078e8c33.txt"
+    },
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\bce02430-1c81-4579-814d-4af740ce9f26.txt"
+    },
+    {
+      "matchCount": 2,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\dcdba0ce-dc1f-4d75-8fba-0b4c7c301ecd.txt"
+    },
+    {
+      "matchCount": 2,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\b873e954-105e-4937-91fe-0f264cca1d38.txt"
+    },
+    {
+      "matchCount": 9,
+      "uri": "C:\\Users\\renjihe\\.cursor\\projects\\d-WorkSpace-mkdevkit-hrm\\agent-tools\\5c3c7f97-b513-4346-ac8b-61cdfe837e29.txt"
+    }
+  ],
+  "totalFiles": 13,
+  "totalMatches": 84
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+Error fetching URL, status code: 404 Not Found
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch"><details>
+<summary>Tool use: **web_fetch**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+怀疑 LHM 仓库结构使用 `core` 目录而非 `LHM`。
+
+正在核对工具文件中关于 query_points 和 neutral pose 的关键逻辑。计划实现 `run_tpose_export_with_sidecars` 来保存 gs_anchors、gs_transform_neutral 和 gs_export_meta 等侧车数据，并准备修改 mesh_export_service。
+
+发现高斯数量与锚点数一致时，可直接用锚点坐标加偏移生成网格，无需 kNN 位移。导出函数将优先读取 gs_anchors.npy 加载锚点，并采用 LHM 标准体姿与 beta 参数重建 SMPL 网格。
+
+SMPL 网格顶点与锚点采样密度不同，仍需 kNN 插值。锚点必须来自推理输出的 `query_points["neutral_coords"]`，不能使用缓存的 PLY 数据。网格顶点需要与锚点处于同一空间，即 LHM 标准体姿并带对应 beta 的 SMPL 顶点。
+
+正在尝试在不完整加载 LHM 模型的情况下近似网格基底位置。考虑利用 gs_anchors 的均值对齐高斯云中心，并用 SMPL 标准体姿叠加与 LHM 一致的变换来重建网格。同时计划从渲染器中提取 skinning mesh，并着手编写 `_lhm_canonical_body_pose` 函数来定义 LHM 标准体姿的关节偏移。</details></think>
+
+_**Agent (default)**_
+
+Error fetching URL, status code: 404 Not Found
+
+<tool-use data-tool-type="unknown" data-tool-name="web_fetch"><details>
+<summary>Tool use: **web_fetch**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在设计一个实用的修复方案。
+
+具体方案已明确：将导出函数复制到 lhm_infer_utils 并加入侧车保存；向导出函数传入输出目录以加载锚点；若存在 canonical_mesh_verts.npy 则直接使用，不再依赖 SMPL 模型重建。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: C:\Users\renjihe\.cursor\projects\d-WorkSpace-mkdevkit-hrm\agent-tools\33de581e-c422-4148-991d-a50a6b15d3f4.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\lhm_infer_utils.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+将从 to_gs_ply 导入函数并添加 sidecar 保存逻辑，以实现 run_tpose_export_with_sidecars。
+
+正在编写 `run_tpose_export_with_sidecars` 函数。该函数在运行时动态导入 LHM++ 的 `to_gs_ply` 模块，并保存 `gs_anchors.npy` 以对齐网格导出。
+
+正在提取 `query_points` 作为侧车数据。先执行单帧推理获取模型输出，再截取 `query_points` 用于后续保存。
+
+已保存 `gs_anchors.npy`、`gs_transform_neutral.npy` 及 `gs_export_meta.json`。元数据记录锚点数量与导出类型。
+
+直接调用 `run_tpose_export` 会重复执行推理，因此不能简单复用该函数。考虑完整复制 `inference_gs` 之后的导出逻辑，或在 HRM 的侧车脚本中修改以避免重复计算。
+
+将在 `api/services/lhm_gs_export.py` 中新建 `run_tpose_export_with_sidecars`，完整复制 `run_tpose_export` 并追加侧车保存逻辑。随后更新 `lhmpp_service` 以调用该函数。
+
+`mesh_export_service` 将优先读取 `gs_anchors.npy` 加载锚点。SMPL 顶点必须与锚点坐标系一致，才能正确应用 kNN 位移。
+
+发现 SMPL_Layer 的零姿态顶点与 LHM 坐标系不一致，无法直接用于基底网格。代理三角化方案过于粗糙。改为在导出侧车时，直接从 LHM 的 skinning 模型中提取 SMPL-X 模板顶点，确保基底网格与锚点坐标系对齐。
+
+正在尝试通过 skinning 前向传播获取 SMPL 模板顶点，以对齐基底网格与锚点坐标系。同时确认 kNN 位移必须基于同一坐标系下的基底顶点，否则即使位移场正确也无法对齐。
+
+正在探索基底网格顶点的生成方式。考虑直接为每个 SMPL 顶点寻找最近的高斯锚点位置，而非依赖 SMPL 模板变形。这样可以确保基底网格与锚点坐标系完全对齐，从而准确应用 kNN 位移。
+
+发现 SMPL_Layer 的零姿态顶点与锚点坐标系不一致，无法直接作为基底网格。因此放弃基于 SMPL 模板的基底顶点方案，改为从锚点数据重建基底网格，确保基底顶点与锚点坐标系完全对齐后再应用 kNN 位移。
+
+意识到仅靠锚点数据无法重建完整网格，必须获取 LHM 的规范 SMPL 顶点。计划在导出侧车时，通过 renderer 的 smplx_model 前向传播得到规范顶点与面片，并保存为 `smplx_canonical_verts.npy` 和面片数据，确保基底网格与锚点坐标系对齐。
+
+正在编写 `lhm_gs_export.py`，将 `run_tpose_export` 复制为带侧车保存的版本。同时尝试通过 `model.renderer.smplx_model` 提取规范 SMPL 顶点，若不可行则回退并发出警告。</details></think>
+
+_**Agent (default)**_
+
+根因是锚点用了静态缓存 PLY，而非推理时的 `query_points.neutral_coords`，且 SMPL 网格与 LHM 规范坐标不一致。正在保存推理 sidecar 并修正网格导出。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: C:\Users\renjihe\.cursor\projects\d-WorkSpace-mkdevkit-hrm\agent-tools\3ab31625-16aa-4542-ac0e-494bf101ce2b.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在创建 `lhm_gs_export.py`，将 `to_gs_ply` 的辅助函数导入并复用主导出逻辑，同时保存 sidecar 文件。
+
+正在添加 `_try_save_smplx_canonical_verts` 函数，尝试通过 `renderer.smplx_model` 提取 SMPL 标准顶点并保存为 sidecar 文件。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\lhm_gs_export.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\lhmpp_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\mesh_export_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\assets\README.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhm_gs_export.py",
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhmpp_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\mesh_export_service.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhm_gs_export.py"
+    },
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\lhmpp_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+正在修复 `_lhm_canonical_poses_tensor` 的循环导入问题。该函数顶部使用了 `torch.device` 类型注解，但内部已导入 torch，需要将其改为字符串注解或 `Any` 来避免循环依赖。</details></think>
+
+_**Agent (default)**_
+
+**根因已经定位**：不是 `FBX_TEXTURE_SIZE` 或 splat 半径的问题，而是 **网格和 3DGS 用了两套不同的坐标/锚点**。
+
+## 为什么差很多
+
+| 项目 | 之前（错） | 3DGS 实际 |
+|------|-----------|-----------|
+| **锚点** | `dense_sample_points/1_160000.ply` 静态模板 | 推理时的 `query_points.neutral_coords`（含**当前体型 betas**） |
+| **SMPL 网格** | 全零 T-pose | LHM **canonical pose**（腿、手腕有固定角度）+ 同一坐标系 |
+| **rebake** | 只读旧 OBJ/旧锚点 | **无法**生成正确 sidecar |
+
+`INFER_DENSE_SAMPLE_PTS=0` 会用 checkpoint 默认 **160000** 高斯；静态 `1_160000.ply` 是通用 prior，**不是**这次推理的锚点，所以形和色都会对不上。
+
+## 已做的修复
+
+1. **3D 重建时**写入 sidecar：
+   - `gs_anchors.npy` — 与 PLY 高斯 **逐点索引对齐**
+   - `smplx_canonical_verts.npy`（若 LHM renderer 可导出）
+2. **蒙皮导出**优先读 sidecar，并用 LHM canonical pose
+3. 无 sidecar 时会 **warning**，不再静默用错锚点
+
+## 你需要做的（关键）
+
+**仅 rebake 不够**，必须 **重新跑一次 3D 重建**（同一张参考图即可）：
+
+1. 同步最新代码到服务器  
+2. Web/API 重新创建 avatar（勾选 **导出蒙皮网格**）  
+3. 确认 output 目录有：
+
+```bash
+ls data/avatars/<id>/output/gs_anchors.npy
+# 可选: smplx_canonical_verts.npy, gs_export_meta.json
+```
+
+4. 再 rebake（可选，调贴图参数）：
+
+```bash
+python scripts/rebake_avatar_fbx.py data/avatars/<id>/output
+```
+
+日志里应出现：
+
+```
+已保存 gs_anchors.npy (160000 点，与 PLY 高斯索引对齐)
+锚点来自推理 sidecar gs_anchors.npy
+```
+
+若仍看到 `锚点 PLY: 1_160000.ply`，说明 **没有 sidecar**，需要重新 3D 重建。
+
+## 关于你的 `.env`
+
+当前配置可以保留；对齐问题解决后，若仍略糊可再调 `FBX_TEXTURE_SPLAT_RADIUS=1.2` 或 `4096`。  
+**`FBX_SUBDIVISION_LEVELS=2` 只增加面数，不能修复形变/颜色错位。**
+
+重新重建后若还有偏差，把日志里 **锚点来源**（sidecar 还是 PLY）和 `gs_export_meta.json` 内容发过来。
+
+---
+
+_**User**_
+
+2026-06-27 01:33:19,619 WARNING [services.mesh_export_service] 3DGS UV 贴图烘焙失败，FBX 将无贴图: No m
+odule named 'rtree'
+Traceback (most recent call last):
+  File "/root/hrm/api/services/mesh_export_service.py", line 619, in export_skinned_mesh_from_gaussian
+    bake_diffuse_from_gaussian_ply(
+  File "/root/hrm/api/services/texture_bake_service.py", line 619, in bake_diffuse_from_gaussian_ply
+    texture = bake_gaussian_colors_via_anchors(
+  File "/root/hrm/api/services/texture_bake_service.py", line 490, in bake_gaussian_colors_via_anchors
+    sampled_uv = sample_uv_at_mesh_points(mesh_verts, faces, uvs, uv_faces, anchor_xyz)
+  File "/root/hrm/api/services/texture_bake_service.py", line 408, in sample_uv_at_mesh_points
+    closest, _dist, tri_ids = trimesh.proximity.closest_point(mesh, points)
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/proximity.py", line 146, in closest_point
+    candidates = nearby_faces(mesh, points)
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/proximity.py", line 52, in nearby_faces
+    rtree = mesh.triangles_tree
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/caching.py", line 139, in get_cached
+    value = function(*args, **kwargs)
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/base.py", line 868, in triangles_tree
+    return triangles.bounds_tree(self.triangles)
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/triangles.py", line 381, in bounds_tree
+    tree = util.bounds_tree(triangle_bounds)
+  File "/root/miniconda3/lib/python3.10/site-packages/trimesh/util.py", line 1760, in bounds_tree
+    import rtree
+ModuleNotFoundError: No module named 'rtree'
+
+---
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+缺少 rtree 模块导致 trimesh 的 closest_point 失败。需要安装该依赖来修复 UV 贴图烘焙。
+
+更稳妥的做法是用 scipy cKDTree 实现无 rtree 依赖的 fallback，避免系统依赖问题。准备查看当前 sample_uv_at_mesh_points 的实现并提供修复方案。</details></think>
+
+_**Agent (default)**_
+
+`trimesh` 的最近点查询依赖 `rtree`，服务器未安装。改为不依赖 `rtree` 的 UV 采样实现。
+
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: D:\WorkSpace\mkdevkit\hrm\api\requirements.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<think><details><summary>Thought Process</summary>
+计划将 `sample_uv_at_mesh_points` 替换为纯 scipy 实现，以消除对 `rtree` 的依赖。
+
+考虑两种纯 scipy 实现方案：一是逐顶点 UV 的快速路径，直接按索引采样；二是通用路径，通过 kNN 或 cKDTree 在三角形质心上查找候选面片，再手动计算最近点与重心坐标。
+
+进一步细化实现：k=3-5 近邻顶点的 UV 加权平均即可近似三角形重心坐标。若锚点数量与网格顶点一致且顺序匹配，可直接按索引采样 UV。准备用 scipy.spatial.cKDTree 实现该方案。
+
+已确定具体实现结构：若 UV 数量与顶点数相等，则直接用 cKDTree 查询最近顶点并返回对应 UV；否则在三角形质心上建立 cKDTree，取前 k 个候选面片，再从中筛选最近三角形进行 UV 插值。SMPL-X 场景下前者已足够。
+
+补充了通用场景的回退策略：若 UV 数量与顶点数不一致，无法直接按顶点索引，需改用面片级插值。计划通过三角形质心的 cKDTree 查找最近面片，并手动计算最近点到三角形的重心坐标，再进行 UV 插值。同时明确了 UV 数量不匹配时，UV 索引应通过 uv_faces 映射到顶点。
+
+最终方案简化为统一的 k 近邻查询：对每个锚点使用 cKDTree 查找最多 4 个最近顶点，直接对这些顶点的 UV 做加权平均。该方法同时覆盖逐顶点 UV 和独立 UV 空间，无需区分场景，实现更简洁。</details></think>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: D:\WorkSpace\mkdevkit\hrm\api\services\texture_bake_service.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "D:\\WorkSpace\\mkdevkit\\hrm\\api\\services\\texture_bake_service.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+**原因**：`trimesh.proximity.closest_point` 依赖可选包 `rtree`，服务器上没装就会报错。
+
+**已改**：UV 映射改为 **仅用 scipy**（kNN 顶点插值；SMPL-X 每顶点一组 UV 时走快速路径），不再调用 trimesh 最近点。
+
+请同步代码后重跑 rebake 或重新导出：
+
+```bash
+python scripts/rebake_avatar_fbx.py data/avatars/<avatar_id>/output
+```
+
+若仍想给 trimesh 其它功能用（可选）：
+
+```bash
+pip install rtree
+# 或 Ubuntu: apt install python3-rtree
+```
+
+对当前贴图烘焙来说 **不必装 rtree**。
+
+---
+
+_**User**_
+
+颜色又没了
+
+---
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: </summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (default)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+Status: **loading**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
